@@ -570,6 +570,7 @@ const UI = {
 /* ============================================================
    模块四:SyncModule 全局参数同步模块
    后台保存后刷新版本号,前端校验版本自动拉取
+   支持导出全部配置为URL参数,跨设备同步
 ============================================================ */
 const SyncModule = {
   // 后台保存后调用,刷新版本号并提示
@@ -577,6 +578,74 @@ const SyncModule = {
     const v = StorageModule.bumpVersion();
     document.getElementById('versionTag').textContent = `数据版本 v${v}`;
     UI.toast('已同步至客户前端,客户刷新即可看到最新数据','success');
+  },
+
+  // 导出全部配置为Base64字符串(含品牌、俱乐部、图片、AI、说明书等)
+  exportAllConfig(){
+    const cfg = {
+      v: 1,
+      brand: StorageModule.loadBrand(),
+      clubs: StorageModule.loadClubs(),
+      ai: StorageModule.loadAI(),
+      manual: StorageModule.loadManual(),
+      webhook: StorageModule.loadWebhook()
+    };
+    const json = JSON.stringify(cfg);
+    return btoa(unescape(encodeURIComponent(json)));
+  },
+
+  // 生成带完整配置的客户前端链接
+  genClientLink(){
+    try{
+      const encoded = this.exportAllConfig();
+      let baseUrl = window.location.origin + window.location.pathname;
+      baseUrl = baseUrl.replace(/%E7%AE%A1%E7%90%86%E5%91%98%E5%90%8E%E5%8F%B0\.html/i, '%E5%AE%A2%E6%88%B7%E5%89%8D%E7%AB%AF.html');
+      baseUrl = baseUrl.replace(/管理员后台\.html/i, '客户前端.html');
+      if(baseUrl.indexOf('管理员')>-1 || baseUrl.indexOf('admin')>-1){
+        const path = window.location.pathname;
+        const dir = path.substring(0, path.lastIndexOf('/')+1);
+        baseUrl = window.location.origin + dir + '客户前端.html';
+      }
+      const link = baseUrl + '?c=' + encoded;
+      const sizeKB = Math.round(encoded.length / 1024);
+      return {link, sizeKB};
+    }catch(e){
+      UI.toast('生成链接失败:'+e.message,'error');
+      return null;
+    }
+  },
+
+  // 显示生成客户链接弹窗
+  showGenLink(){
+    const result = this.genClientLink();
+    if(!result) return;
+    const {link, sizeKB} = result;
+    let warn = '';
+    if(sizeKB > 500){
+      warn = `<div class="text-xs text-orange mt-2">⚠️ 配置较大(${sizeKB}KB),主要因为图片较多。如链接打不开请减少图片数量</div>`;
+    }
+    UI.modal('生成客户专属链接', `
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600">把这个链接发给客户,客户打开后自动同步所有配置(品牌、码头、图片、AI等),跨设备通用。</p>
+        <div class="bg-seagrad/50 rounded-lg p-3">
+          <div class="text-xs text-gray-500 mb-1">客户前端链接:</div>
+          <div class="text-xs text-deepsea break-all font-mono max-h-40 overflow-y-auto">${link}</div>
+        </div>
+        <div class="text-xs text-gray-500">配置大小: ${sizeKB} KB${warn}</div>
+      </div>`,
+      `<button onclick="UI.closeModal()" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">关闭</button>
+       <button onclick="SyncModule.copyLink()" class="btn-primary px-5 py-2 rounded-lg font-medium">复制链接</button>`);
+    this._tempLink = link;
+  },
+
+  copyLink(){
+    if(!this._tempLink) return;
+    navigator.clipboard.writeText(this._tempLink).then(()=>{
+      UI.toast('链接已复制 ✓','success');
+      UI.closeModal();
+    }).catch(()=>{
+      UI.toast('复制失败,请手动复制','error');
+    });
   }
 };
 
@@ -778,7 +847,8 @@ const BrandModule = {
           </div>
         </div>
       </div>
-      <div class="mt-5 flex justify-end">
+      <div class="mt-5 flex justify-between items-center">
+        <button onclick="SyncModule.showGenLink()" class="btn-gold px-6 py-2.5 rounded-lg font-medium text-sm">📱 生成客户链接</button>
         <button onclick="BrandModule.save()" class="btn-primary px-8 py-2.5 rounded-lg font-medium">保存并同步前端</button>
       </div>`;
   },

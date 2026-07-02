@@ -986,14 +986,28 @@ const ManualModule = {
 ============================================================ */
 function initApp(){
   // 从URL参数导入推送配置(用于跨设备同步)
-  // 支持 ?t=xxx (PushPlus短模式) 和 ?w=xxx (企业微信base64模式) 和 #push=xxx (旧模式兼容)
+  // 支持 ?t=xxx (PushPlus短模式) 和 ?w=xxx (企业微信base64模式) 和 ?c=xxx (完整配置) 和 #push=xxx (旧模式兼容)
   const urlParams = new URLSearchParams(window.location.search);
   const t = urlParams.get('t');
   const w = urlParams.get('w');
+  const c = urlParams.get('c');
   const hash = window.location.hash;
 
   let imported = false;
-  if(t){
+  if(c){
+    // 完整配置模式: ?c=base64 (包含品牌、俱乐部、图片、AI、说明书、推送等全部配置)
+    try{
+      const cfg = JSON.parse(decodeURIComponent(escape(atob(c))));
+      if(cfg && cfg.v){
+        if(cfg.brand) localStorage.setItem('nzch_brand', JSON.stringify(cfg.brand));
+        if(cfg.clubs) localStorage.setItem('nzch_clubs', JSON.stringify(cfg.clubs));
+        if(cfg.ai) localStorage.setItem('nzch_ai', JSON.stringify(cfg.ai));
+        if(cfg.manual) localStorage.setItem('nzch_manual', JSON.stringify(cfg.manual));
+        if(cfg.webhook) localStorage.setItem('nzch_webhook', JSON.stringify(cfg.webhook));
+        imported = true;
+      }
+    }catch(e){ console.warn('完整配置导入失败',e); }
+  }else if(t){
     // PushPlus短模式: ?t=token
     localStorage.setItem('nzch_webhook', JSON.stringify({type:'pushplus', token:t}));
     imported = true;
