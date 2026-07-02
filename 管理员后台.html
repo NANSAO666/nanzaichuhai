@@ -289,7 +289,12 @@ const StorageModule = {
   loadAI(){ return this.get(this.KEYS.AI, null); },
   saveAI(a){ return this.set(this.KEYS.AI, a); },
 
-  loadWebhook(){ return this.get(this.KEYS.WEBHOOK, ''); },
+  loadWebhook(){
+    const raw = this.get(this.KEYS.WEBHOOK, null);
+    if(!raw) return {url:'', useProxy:true};
+    if(typeof raw === 'string') return {url:raw, useProxy:true};
+    return raw;
+  },
   saveWebhook(w){ return this.set(this.KEYS.WEBHOOK, w); },
 
   loadManual(){ return this.get(this.KEYS.MANUAL, null); },
@@ -458,7 +463,7 @@ const DefaultDataModule = {
     if(!StorageModule.loadBrand()) StorageModule.saveBrand(this.brand());
     if(!StorageModule.loadClubs()) StorageModule.saveClubs(this.clubs());
     if(!StorageModule.loadAI()) StorageModule.saveAI(this.aiConfig());
-    if(!StorageModule.loadWebhook()) StorageModule.saveWebhook('');
+    if(!StorageModule.loadWebhook()||!StorageModule.loadWebhook().url) StorageModule.saveWebhook({url:'', useProxy:true});
     if(!StorageModule.loadManual()) StorageModule.saveManual(this.manual());
     if(!StorageModule.loadOrders()) StorageModule.saveOrders([]);
     if(!StorageModule.getVersion()) StorageModule.set(StorageModule.KEYS.VERSION, 1);
@@ -1133,8 +1138,10 @@ const AIModule = {
    模块九:WebhookModule 企业微信机器人配置
 ============================================================ */
 const WebhookModule = {
+  CORS_PROXY: 'https://api.allorigins.win/post?url=',
+
   render(){
-    const url = StorageModule.loadWebhook() || '';
+    const cfg = StorageModule.loadWebhook() || {url:'', useProxy:true};
     const b = StorageModule.loadBrand() || DefaultDataModule.brand();
     const tpl = `【南崽出海·新游艇预约通知】
 订单编号：NZC20260702143012AB12
@@ -1157,12 +1164,32 @@ const WebhookModule = {
         <p class="text-sm text-gray-500 mt-1">配置推送链接,客户预约后自动推送完整订单通知至企业微信群。</p>
       </div>
       <div class="bg-white card-soft p-6 space-y-5">
-        <div><label class="text-sm font-medium text-gray-700">Webhook推送链接</label>
-          <input id="whUrl" class="input-soft mt-1" value="${url}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"/>
+        <div>
+          <label class="text-sm font-medium text-gray-700">Webhook推送链接</label>
+          <input id="whUrl" class="input-soft mt-1" value="${cfg.url||''}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx-xxxx-xxxx"/>
+          <p class="text-xs text-gray-400 mt-1">
+            格式说明：以 <code class="bg-seagrad px-1 rounded">qyapi.weixin.qq.com/cgi-bin/webhook/send?key=</code> 开头
+          </p>
+        </div>
+        <div class="flex items-center gap-3 bg-seagrad/50 p-3 rounded-xl">
+          <input type="checkbox" id="whProxy" ${cfg.useProxy?'checked':''} class="w-4 h-4 text-orange"/>
+          <div>
+            <div class="text-sm font-medium text-deepsea">启用CORS代理(推荐)</div>
+            <div class="text-xs text-gray-500">浏览器直接调用企业微信API会被跨域拦截,启用代理后可正常推送</div>
+          </div>
         </div>
         <div class="flex gap-3">
           <button onclick="WebhookModule.save()" class="btn-primary px-6 py-2.5 rounded-lg font-medium">保存</button>
           <button onclick="WebhookModule.test()" class="btn-orange px-6 py-2.5 rounded-lg font-medium">发送测试消息</button>
+        </div>
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div class="text-sm font-medium text-amber-800 mb-2">📖 如何获取Webhook地址?</div>
+          <ol class="text-xs text-amber-700 space-y-1 list-decimal list-inside">
+            <li>打开企业微信 → 进入群聊 → 右上角群设置</li>
+            <li>找到「群机器人」→「添加机器人」→ 命名(如:南崽出海通知)</li>
+            <li>复制生成的Webhook地址(以qyapi.weixin.qq.com开头)</li>
+            <li>粘贴到上方输入框,点击「发送测试消息」验证</li>
+          </ol>
         </div>
         <div>
           <label class="text-sm font-medium text-gray-700 mb-2 block">推送模板预览(变量自动替换)</label>
@@ -1173,29 +1200,49 @@ const WebhookModule = {
 
   save(){
     const url = document.getElementById('whUrl').value.trim();
-    StorageModule.saveWebhook(url);
+    const useProxy = document.getElementById('whProxy').checked;
+    if(url && !url.includes('qyapi.weixin.qq.com/cgi-bin/webhook')){
+      UI.toast('链接格式不对,请确认是群机器人Webhook地址','error');
+      return;
+    }
+    StorageModule.saveWebhook({url, useProxy});
     SyncModule.syncToClient();
     UI.toast('Webhook配置已保存','success');
   },
 
-  // 发送测试消息
   async test(){
     const url = document.getElementById('whUrl').value.trim();
+    const useProxy = document.getElementById('whProxy').checked;
     if(!url){ UI.toast('请先填写Webhook链接','error'); return; }
+    if(!url.includes('qyapi.weixin.qq.com/cgi-bin/webhook')){
+      UI.toast('链接格式不对,请确认是群机器人Webhook地址','error');
+      return;
+    }
     UI.toast('正在发送测试消息...','info');
     try{
-      const res = await fetch(url, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({
-          msgtype:'text',
-          text:{ content:'【南崽出海】Webhook测试消息:配置成功!客户预约后将自动推送至此群。' }
-        })
+      const body = JSON.stringify({
+        msgtype:'text',
+        text:{ content:'【南崽出海】Webhook测试消息:配置成功!客户预约后将自动推送至此群。' }
       });
+      let res;
+      if(useProxy){
+        res = await fetch(this.CORS_PROXY + encodeURIComponent(url), {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body
+        });
+      }else{
+        res = await fetch(url, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body
+        });
+      }
       if(!res.ok){ UI.toast(`推送失败(${res.status})`,'error'); return; }
       const data = await res.json();
-      if(data.errcode===0) UI.toast('测试消息已推送至企业微信群','success');
-      else UI.toast('推送失败:'+(data.errmsg||'未知错误'),'error');
+      const result = data.contents ? JSON.parse(data.contents) : data;
+      if(result.errcode===0) UI.toast('测试消息已推送至企业微信群 ✓','success');
+      else UI.toast('推送失败:'+(result.errmsg||'未知错误'),'error');
     }catch(e){
       UI.toast('网络异常:'+e.message,'error');
     }

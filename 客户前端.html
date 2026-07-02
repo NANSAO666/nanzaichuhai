@@ -172,7 +172,12 @@ const StorageModule = {
   loadBrand(){return this.get(this.KEYS.BRAND,null)},
   loadClubs(){return this.get(this.KEYS.CLUBS,[])},
   loadAI(){return this.get(this.KEYS.AI,null)},
-  loadWebhook(){return this.get(this.KEYS.WEBHOOK,'')},
+  loadWebhook(){
+    const raw = this.get(this.KEYS.WEBHOOK, null);
+    if(!raw) return {url:'', useProxy:true};
+    if(typeof raw === 'string') return {url:raw, useProxy:true};
+    return raw;
+  },
   loadManual(){return this.get(this.KEYS.MANUAL,[])},
   loadOrders(){return this.get(this.KEYS.ORDERS,[])},
   saveOrders(o){try{localStorage.setItem(this.KEYS.ORDERS,JSON.stringify(o));return true}catch(e){return false}},
@@ -816,8 +821,8 @@ const BookingModule = {
   },
   // 企业微信Webhook推送(固定模板)
   async pushWebhook(order,brand){
-    const url=StorageModule.loadWebhook();
-    if(!url)return; // 未配置则跳过
+    const cfg=StorageModule.loadWebhook();
+    if(!cfg||!cfg.url)return; // 未配置则跳过
     const content=`【南崽出海·新游艇预约通知】
 订单编号：${order.orderId}
 预约码头：${order.clubName}
@@ -833,7 +838,16 @@ const BookingModule = {
 提交时间：${new Date(order.createdAt).toLocaleString('zh-CN')}
 请尽快联系客户确认档期！`;
     try{
-      await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({msgtype:'text',text:{content}})});
+      const body=JSON.stringify({msgtype:'text',text:{content}});
+      if(cfg.useProxy){
+        await fetch('https://api.allorigins.win/post?url='+encodeURIComponent(cfg.url),{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body
+        });
+      }else{
+        await fetch(cfg.url,{method:'POST',headers:{'Content-Type':'application/json'},body});
+      }
     }catch(e){console.warn('Webhook推送失败',e)}
   },
   // 成功弹窗
