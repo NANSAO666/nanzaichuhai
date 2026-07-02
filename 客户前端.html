@@ -747,10 +747,8 @@ const BookingModule = {
           <label class="text-sm font-medium text-deepsea">选择船型 <span class="text-red-500">*</span></label>
           <select id="fBoat" class="input-soft mt-1" onchange="BookingModule.form.boatSize=this.value">${boatOpts}</select>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-sm font-medium text-deepsea">出海日期 <span class="text-red-500">*</span></label><input id="fDate" type="date" class="input-soft mt-1" value="${this.form.bookingDate}" onchange="BookingModule.form.bookingDate=this.value"/></div>
-          <div><label class="text-sm font-medium text-deepsea">时段 <span class="text-red-500">*</span></label><select id="fSlot" class="input-soft mt-1" onchange="BookingModule.form.timeSlot=this.value">${slotOpts}</select></div>
-        </div>
+        <div><label class="text-sm font-medium text-deepsea">出海日期 <span class="text-red-500">*</span></label><input id="fDate" type="date" class="input-soft mt-1" value="${this.form.bookingDate}" onchange="BookingModule.form.bookingDate=this.value"/></div>
+        <div><label class="text-sm font-medium text-deepsea">时段 <span class="text-red-500">*</span></label><select id="fSlot" class="input-soft mt-1" onchange="BookingModule.form.timeSlot=this.value">${slotOpts}</select></div>
         <div><label class="text-sm font-medium text-deepsea">出行人数 <span class="text-red-500">*</span></label><input id="fPax" type="number" min="1" class="input-soft mt-1" value="${this.form.pax}" onchange="BookingModule.form.pax=this.value" placeholder="如 8"/></div>
         ${addonBoxes?`<div><label class="text-sm font-medium text-deepsea">增值服务(可多选)</label><div class="space-y-1.5 mt-1">${addonBoxes}</div></div>`:''}
         <div class="grid grid-cols-2 gap-3">
@@ -982,6 +980,16 @@ function initApp(){
         {id:'pazhouwan',name:'琶洲湾游艇会',area:'海珠区',address:'广州市海珠区琶洲会展中心江畔',route:'琶洲→广州塔→海心沙',facilities:['CBD江景','商务接待','会议厅'],maxPax:50,timeSlots:['10:00-13:00','14:00-17:00','19:00-22:00'],refundRule:'提前24小时全额退款',active:true,pricing:[{size:'40英尺',price:2700},{size:'50英尺',price:4400},{size:'60英尺',price:6700},{size:'70英尺',price:9500},{size:'80英尺',price:13500}],addons:[{name:'航拍跟拍',price:800},{name:'商务会议布置',price:1800}],images:[],intro:'琶洲湾游艇会坐拥CBD江景,广州塔尽收眼底,顶级商务接待首选。'}
       ];
       localStorage.setItem('nzch_clubs',JSON.stringify(defaultClubs));
+    }
+    if(!StorageModule.loadManual()||!StorageModule.loadManual().length){
+      const defaultManual=[
+        {id:'m1',title:'如何预约游艇',image:'',content:'1. 在首页或码头页选择心仪的游艇俱乐部\n2. 查看码头详情、船型价格和配套服务\n3. 点击「立即预约」进入预约表单\n4. 选择码头、船型、出海日期和时段\n5. 填写出行人数、姓名和手机号\n6. 提交预约，商家将尽快联系您确认档期\n\n💡 小提示：建议提前1-3天预约，周末和节假日请尽早安排！'},
+        {id:'m2',title:'关于费用说明',image:'',content:'💰 基础费用：\n按船型/尺寸计费，不同码头价格略有差异，具体见各码头详情页。\n\n⏰ 超时费用：\n超出约定时间按小时计费，具体费率以商家确认为准。\n\n🎁 增值服务：\n航拍跟拍、酒水套餐、摩托艇、海钓体验等可按需选购。\n\n💳 支付方式：\n预约提交后商家联系确认，支持微信/支付宝/银行转账。'},
+        {id:'m3',title:'出行须知与安全',image:'',content:'👕 穿着建议：\n建议穿着休闲舒适的衣物和防滑鞋，夏季备好防晒用品。\n\n🌊 安全须知：\n• 登船后请听从船长和工作人员指挥\n• 航行时请勿在船舷追逐打闹\n• 老人和儿童需有成人陪同\n• 严禁酒后驾驶游艇\n• 如遇身体不适请及时告知船员\n\n⛑️ 安全设备：\n每艘游艇均配备救生衣、灭火器等安全设备，请放心出行。'},
+        {id:'m4',title:'退改政策',image:'',content:'📅 提前取消：\n• 出行前24小时以上取消：全额退款\n• 出行前12-24小时取消：退款50%\n• 出行前12小时内取消：不予退款\n\n🌧️ 恶劣天气：\n如遇台风、暴雨等不可抗力因素导致无法出海，可全额退款或改期。\n\n🔄 改期说明：\n如需改期，请提前联系商家，根据档期情况协商安排。'},
+        {id:'m5',title:'联系我们',image:'',content:'📞 客服电话：13003192344\n💬 微信客服：DaogoG\n📍 商家地址：广州市南沙区港前大道\n🕐 营业时间：09:00-21:00\n\n有任何问题随时联系我们，南崽出海竭诚为您服务！\n\n⛵ 南崽出海，赴一场江海浪漫'}
+      ];
+      localStorage.setItem('nzch_manual',JSON.stringify(defaultManual));
     }
   }
   App.refreshBrand();
