@@ -1377,6 +1377,76 @@ const PushModule = {
     }catch(e){
       UI.toast('网络异常:'+e.message,'error');
     }
+  },
+
+  async sendOrderPush(order){
+    const cfg = StorageModule.loadWebhook() || {type:'pushplus', token:'', url:'', useProxy:false};
+    const b = StorageModule.loadBrand() || DefaultDataModule.brand();
+    const type = cfg.type || 'pushplus';
+    if(!cfg.token && !cfg.url){
+      UI.toast('未配置推送信息','error');
+      return false;
+    }
+
+    const content = `【南崽出海·新游艇预约通知】
+订单编号：${order.orderId}
+预约码头：${order.clubName}
+码头地址：${order.clubAddress}
+客户姓名：${order.customerName}
+联系电话：${order.customerPhone}
+选定游艇：${order.boatSize}
+出海日期&时段：${order.bookingDate} ${order.timeSlot}
+出行人数：${order.pax}
+增值配套：${(order.addons||[]).join('、')||'无'}
+客户出行备注：${order.remark||'无'}
+商家对接：微信${b.wechat} / 电话${b.phone}
+提交时间：${new Date(order.createdAt).toLocaleString('zh-CN')}
+请尽快联系客户确认档期！`;
+
+    try{
+      let ok = false;
+      if(type==='pushplus'){
+        if(!cfg.token){ UI.toast('请先配置PushPlus Token','error'); return false; }
+        const res = await fetch('https://www.pushplus.plus/send', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            token: cfg.token,
+            title: '【南崽出海】新游艇预约通知',
+            content: content,
+            template: 'txt'
+          })
+        });
+        const data = await res.json();
+        if(data.code===200) ok = true;
+      }else{
+        if(!cfg.url){ UI.toast('请先配置Webhook地址','error'); return false; }
+        const body = JSON.stringify({ msgtype:'text', text:{ content: content } });
+        let res;
+        if(cfg.useProxy){
+          res = await fetch('https://api.allorigins.win/post?url=' + encodeURIComponent(cfg.url), {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body
+          });
+          const data = await res.json();
+          const result = data.contents ? JSON.parse(data.contents) : data;
+          if(result.errcode===0) ok = true;
+        }else{
+          res = await fetch(cfg.url, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body
+          });
+          const data = await res.json();
+          if(data.errcode===0) ok = true;
+        }
+      }
+      return ok;
+    }catch(e){
+      console.warn('推送失败',e);
+      return false;
+    }
   }
 };
 
@@ -1595,12 +1665,24 @@ const OrderModule = {
       `<button onclick="UI.closeModal()" class="btn-primary px-5 py-2 rounded-lg">关闭</button>`);
   },
 
-  setStatus(orderId, status){
+  async setStatus(orderId, status){
     const orders = StorageModule.loadOrders();
     const o = orders.find(x=>x.orderId===orderId);
-    if(o){ o.status = status; StorageModule.saveOrders(orders); }
+    if(!o) return;
+    
+    const oldStatus = o.status;
+    o.status = status;
+    StorageModule.saveOrders(orders);
     this.render();
-    UI.toast('订单状态已更新','success');
+    
+    if(oldStatus==='pending' && status==='done'){
+      UI.toast('正在推送微信通知...','info');
+      const ok = await PushModule.sendOrderPush(o);
+      if(ok) UI.toast('订单已确认,微信通知已发送 ✓','success');
+      else UI.toast('订单已确认,但推送失败','warn');
+    }else{
+      UI.toast('订单状态已更新','success');
+    }
   },
 
   // 导出JSON备份

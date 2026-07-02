@@ -807,8 +807,6 @@ const BookingModule = {
     const orders=StorageModule.loadOrders();
     orders.push(order);
     StorageModule.saveOrders(orders);
-    // Webhook推送(异步,失败静默)
-    this.pushWebhook(order,brand);
     // 成功弹窗
     this.showSuccess(orderId,brand);
   },
