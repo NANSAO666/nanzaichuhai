@@ -1226,11 +1226,48 @@ const PushModule = {
           <button onclick="PushModule.test()" class="btn-orange px-6 py-2.5 rounded-lg font-medium">发送测试消息</button>
         </div>
 
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div class="text-sm font-medium text-blue-800 mb-2">📱 手机端配置同步</div>
+          <p class="text-xs text-blue-700 mb-3">如果手机端和电脑端不是同一个浏览器,点下方按钮生成带配置的链接,用手机打开一次即可自动同步推送配置。</p>
+          <button onclick="PushModule.genLink()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">生成专属同步链接</button>
+          <div id="linkBox" class="hidden mt-3">
+            <div class="bg-white rounded-lg p-3 border border-blue-200">
+              <div class="text-xs text-gray-500 mb-1">前端链接(用手机浏览器打开一次即可):</div>
+              <div id="linkText" class="text-xs text-deepsea break-all font-mono bg-seagrad/50 p-2 rounded"></div>
+            </div>
+            <button onclick="PushModule.copyLink()" class="mt-2 text-xs text-blue-600 underline">复制链接</button>
+          </div>
+        </div>
+
         <div>
           <label class="text-sm font-medium text-gray-700 mb-2 block">推送模板预览(变量自动替换)</label>
           <pre class="bg-seagrad p-4 rounded-xl text-xs text-deepsea whitespace-pre-wrap font-mono leading-relaxed">${tpl}</pre>
         </div>
       </div>`;
+  },
+
+  genLink(){
+    const cfg = StorageModule.loadWebhook();
+    if(!cfg || (cfg.type==='pushplus' && !cfg.token) || (cfg.type==='wecom' && !cfg.url)){
+      UI.toast('请先配置好推送信息并保存','error');
+      return;
+    }
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
+    const baseUrl = window.location.href.replace('管理员后台','客户前端').split('#')[0].split('?')[0];
+    const link = baseUrl + '#push=' + encoded;
+    document.getElementById('linkText').textContent = link;
+    document.getElementById('linkBox').classList.remove('hidden');
+    UI.toast('链接已生成,复制后用手机浏览器打开','success');
+  },
+
+  copyLink(){
+    const text = document.getElementById('linkText').textContent;
+    if(!text) return;
+    navigator.clipboard.writeText(text).then(()=>{
+      UI.toast('链接已复制 ✓','success');
+    }).catch(()=>{
+      UI.toast('复制失败,请手动复制','error');
+    });
   },
 
   switchType(type){

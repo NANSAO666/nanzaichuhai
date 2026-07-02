@@ -987,6 +987,19 @@ const ManualModule = {
    初始化
 ============================================================ */
 function initApp(){
+  // 从URL参数导入推送配置(用于跨设备同步)
+  const hash = window.location.hash;
+  if(hash && hash.indexOf('#push=')===0){
+    try{
+      const encoded = hash.replace('#push=','');
+      const cfg = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+      if(cfg && (cfg.token || cfg.url)){
+        localStorage.setItem('nzch_webhook', JSON.stringify(cfg));
+      }
+      history.replaceState(null, '', window.location.pathname);
+    }catch(e){ console.warn('推送配置导入失败',e); }
+  }
+
   // 首次打开若后台未初始化,前端兜底加载默认数据(离线可用)
   if(!StorageModule.loadBrand()||!StorageModule.loadClubs().length){
     // 前端仅加载默认数据供浏览,不覆盖后台配置
