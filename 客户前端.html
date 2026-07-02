@@ -819,10 +819,12 @@ const BookingModule = {
     const rand=Math.random().toString(36).slice(2,6).toUpperCase();
     return `NZC${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${rand}`;
   },
-  // 企业微信Webhook推送(固定模板)
+  // 消息推送(PushPlus/企业微信)
   async pushWebhook(order,brand){
     const cfg=StorageModule.loadWebhook();
-    if(!cfg||!cfg.url)return; // 未配置则跳过
+    if(!cfg)return;
+    const type=cfg.type||'pushplus';
+    const title='【南崽出海】新游艇预约通知';
     const content=`【南崽出海·新游艇预约通知】
 订单编号：${order.orderId}
 预约码头：${order.clubName}
@@ -838,17 +840,25 @@ const BookingModule = {
 提交时间：${new Date(order.createdAt).toLocaleString('zh-CN')}
 请尽快联系客户确认档期！`;
     try{
-      const body=JSON.stringify({msgtype:'text',text:{content}});
-      if(cfg.useProxy){
-        await fetch('https://api.allorigins.win/post?url='+encodeURIComponent(cfg.url),{
+      if(type==='pushplus' && cfg.token){
+        await fetch('https://www.pushplus.plus/send',{
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body
+          body:JSON.stringify({token:cfg.token,title:title,content:content,template:'txt'})
         });
-      }else{
-        await fetch(cfg.url,{method:'POST',headers:{'Content-Type':'application/json'},body});
+      }else if(type==='wecom' && cfg.url){
+        const body=JSON.stringify({msgtype:'text',text:{content}});
+        if(cfg.useProxy){
+          await fetch('https://api.allorigins.win/post?url='+encodeURIComponent(cfg.url),{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body
+          });
+        }else{
+          await fetch(cfg.url,{method:'POST',headers:{'Content-Type':'application/json'},body});
+        }
       }
-    }catch(e){console.warn('Webhook推送失败',e)}
+    }catch(e){console.warn('推送失败',e)}
   },
   // 成功弹窗
   showSuccess(orderId,brand){

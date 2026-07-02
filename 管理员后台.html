@@ -558,7 +558,7 @@ const UI = {
       clubs: ()=>ClubModule.render(),
       images: ()=>ImageModule.render(),
       ai: ()=>AIModule.render(),
-      webhook: ()=>WebhookModule.render(),
+      webhook: ()=>PushModule.render(),
       manual: ()=>ManualModule.render(),
       orders: ()=>OrderModule.render(),
       reset: ()=>ResetModule.render(),
@@ -1135,13 +1135,12 @@ const AIModule = {
 };
 
 /* ============================================================
-   模块九:WebhookModule 企业微信机器人配置
+   模块九:PushModule 消息推送配置
+   支持PushPlus推送加(推荐)和企业微信机器人双模式
 ============================================================ */
-const WebhookModule = {
-  CORS_PROXY: 'https://api.allorigins.win/post?url=',
-
+const PushModule = {
   render(){
-    const cfg = StorageModule.loadWebhook() || {url:'', useProxy:true};
+    const cfg = StorageModule.loadWebhook() || {type:'pushplus', token:'', url:'', useProxy:false};
     const b = StorageModule.loadBrand() || DefaultDataModule.brand();
     const tpl = `【南崽出海·新游艇预约通知】
 订单编号：NZC20260702143012AB12
@@ -1157,40 +1156,76 @@ const WebhookModule = {
 商家对接：微信${b.wechat} / 电话${b.phone}
 提交时间：2026-07-02 14:30:12
 请尽快联系客户确认档期！`;
+    const type = cfg.type || 'pushplus';
 
     document.getElementById('contentArea').innerHTML = `
       <div class="mb-5">
-        <h2 class="font-serif-display text-2xl font-bold text-deepsea">企业微信机器人Webhook</h2>
-        <p class="text-sm text-gray-500 mt-1">配置推送链接,客户预约后自动推送完整订单通知至企业微信群。</p>
+        <h2 class="font-serif-display text-2xl font-bold text-deepsea">消息推送配置</h2>
+        <p class="text-sm text-gray-500 mt-1">客户预约后自动推送完整订单通知至你的微信。</p>
       </div>
       <div class="bg-white card-soft p-6 space-y-5">
         <div>
-          <label class="text-sm font-medium text-gray-700">Webhook推送链接</label>
-          <input id="whUrl" class="input-soft mt-1" value="${cfg.url||''}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx-xxxx-xxxx"/>
-          <p class="text-xs text-gray-400 mt-1">
-            格式说明：以 <code class="bg-seagrad px-1 rounded">qyapi.weixin.qq.com/cgi-bin/webhook/send?key=</code> 开头
-          </p>
+          <label class="text-sm font-medium text-gray-700 mb-2 block">推送方式</label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="flex items-center gap-2 p-3 border-2 rounded-xl cursor-pointer ${type==='pushplus'?'border-gold bg-gold/10':'border-gray-200'}" onclick="PushModule.switchType('pushplus')">
+              <input type="radio" name="pushType" value="pushplus" ${type==='pushplus'?'checked':''} class="hidden"/>
+              <div>
+                <div class="font-medium text-deepsea text-sm">📱 PushPlus推送加(推荐)</div>
+                <div class="text-xs text-gray-500 mt-0.5">个人微信直接收,无需企业微信</div>
+              </div>
+            </label>
+            <label class="flex items-center gap-2 p-3 border-2 rounded-xl cursor-pointer ${type==='wecom'?'border-gold bg-gold/10':'border-gray-200'}" onclick="PushModule.switchType('wecom')">
+              <input type="radio" name="pushType" value="wecom" ${type==='wecom'?'checked':''} class="hidden"/>
+              <div>
+                <div class="font-medium text-deepsea text-sm">💼 企业微信机器人</div>
+                <div class="text-xs text-gray-500 mt-0.5">推送到企业微信群</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        ${type==='pushplus' ? `
+        <div>
+          <label class="text-sm font-medium text-gray-700">PushPlus Token</label>
+          <input id="ppToken" class="input-soft mt-1" value="${cfg.token||''}" placeholder="请输入你的PushPlus Token"/>
+          <p class="text-xs text-gray-400 mt-1">微信搜索公众号「PushPlus推送加」关注后获取</p>
+        </div>
+        <div class="bg-green-50 border border-green-200 rounded-xl p-4">
+          <div class="text-sm font-medium text-green-800 mb-2">📖 如何获取PushPlus Token?</div>
+          <ol class="text-xs text-green-700 space-y-1 list-decimal list-inside">
+            <li>微信搜索公众号「PushPlus推送加」并关注</li>
+            <li>进入公众号,点击底部菜单「推送加」</li>
+            <li>点击「发送消息」,复制你的token(一串字母数字)</li>
+            <li>粘贴到上方输入框,点击「发送测试消息」验证</li>
+          </ol>
+        </div>` : `
+        <div>
+          <label class="text-sm font-medium text-gray-700">企业微信Webhook地址</label>
+          <input id="whUrl" class="input-soft mt-1" value="${cfg.url||''}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx"/>
+          <p class="text-xs text-gray-400 mt-1">格式:qyapi.weixin.qq.com/cgi-bin/webhook/send?key=开头</p>
         </div>
         <div class="flex items-center gap-3 bg-seagrad/50 p-3 rounded-xl">
           <input type="checkbox" id="whProxy" ${cfg.useProxy?'checked':''} class="w-4 h-4 text-orange"/>
           <div>
-            <div class="text-sm font-medium text-deepsea">启用CORS代理(推荐)</div>
-            <div class="text-xs text-gray-500">浏览器直接调用企业微信API会被跨域拦截,启用代理后可正常推送</div>
+            <div class="text-sm font-medium text-deepsea">启用CORS代理</div>
+            <div class="text-xs text-gray-500">浏览器直接调用企业微信API会被跨域拦截,需开启代理</div>
           </div>
         </div>
-        <div class="flex gap-3">
-          <button onclick="WebhookModule.save()" class="btn-primary px-6 py-2.5 rounded-lg font-medium">保存</button>
-          <button onclick="WebhookModule.test()" class="btn-orange px-6 py-2.5 rounded-lg font-medium">发送测试消息</button>
-        </div>
         <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div class="text-sm font-medium text-amber-800 mb-2">📖 如何获取Webhook地址?</div>
+          <div class="text-sm font-medium text-amber-800 mb-2">📖 如何获取企业微信Webhook?</div>
           <ol class="text-xs text-amber-700 space-y-1 list-decimal list-inside">
             <li>打开企业微信 → 进入群聊 → 右上角群设置</li>
-            <li>找到「群机器人」→「添加机器人」→ 命名(如:南崽出海通知)</li>
-            <li>复制生成的Webhook地址(以qyapi.weixin.qq.com开头)</li>
+            <li>找到「群机器人」→「添加机器人」→ 命名</li>
+            <li>复制生成的Webhook地址</li>
             <li>粘贴到上方输入框,点击「发送测试消息」验证</li>
           </ol>
+        </div>`}
+
+        <div class="flex gap-3">
+          <button onclick="PushModule.save()" class="btn-primary px-6 py-2.5 rounded-lg font-medium">保存</button>
+          <button onclick="PushModule.test()" class="btn-orange px-6 py-2.5 rounded-lg font-medium">发送测试消息</button>
         </div>
+
         <div>
           <label class="text-sm font-medium text-gray-700 mb-2 block">推送模板预览(变量自动替换)</label>
           <pre class="bg-seagrad p-4 rounded-xl text-xs text-deepsea whitespace-pre-wrap font-mono leading-relaxed">${tpl}</pre>
@@ -1198,51 +1233,90 @@ const WebhookModule = {
       </div>`;
   },
 
+  switchType(type){
+    const cfg = StorageModule.loadWebhook() || {type:'pushplus', token:'', url:'', useProxy:false};
+    cfg.type = type;
+    StorageModule.saveWebhook(cfg);
+    this.render();
+  },
+
   save(){
-    const url = document.getElementById('whUrl').value.trim();
-    const useProxy = document.getElementById('whProxy').checked;
-    if(url && !url.includes('qyapi.weixin.qq.com/cgi-bin/webhook')){
-      UI.toast('链接格式不对,请确认是群机器人Webhook地址','error');
-      return;
+    const cfg = StorageModule.loadWebhook() || {type:'pushplus', token:'', url:'', useProxy:false};
+    const type = cfg.type || 'pushplus';
+    if(type==='pushplus'){
+      const token = document.getElementById('ppToken').value.trim();
+      cfg.token = token;
+      if(!token){ UI.toast('请输入PushPlus Token','error'); return; }
+    }else{
+      const url = document.getElementById('whUrl').value.trim();
+      const useProxy = document.getElementById('whProxy').checked;
+      cfg.url = url;
+      cfg.useProxy = useProxy;
+      if(!url){ UI.toast('请输入Webhook地址','error'); return; }
+      if(!url.includes('qyapi.weixin.qq.com/cgi-bin/webhook')){
+        UI.toast('链接格式不对,请确认是群机器人Webhook地址','error');
+        return;
+      }
     }
-    StorageModule.saveWebhook({url, useProxy});
+    cfg.type = type;
+    StorageModule.saveWebhook(cfg);
     SyncModule.syncToClient();
-    UI.toast('Webhook配置已保存','success');
+    UI.toast('推送配置已保存 ✓','success');
   },
 
   async test(){
-    const url = document.getElementById('whUrl').value.trim();
-    const useProxy = document.getElementById('whProxy').checked;
-    if(!url){ UI.toast('请先填写Webhook链接','error'); return; }
-    if(!url.includes('qyapi.weixin.qq.com/cgi-bin/webhook')){
-      UI.toast('链接格式不对,请确认是群机器人Webhook地址','error');
-      return;
-    }
+    const cfg = StorageModule.loadWebhook() || {type:'pushplus', token:'', url:'', useProxy:false};
+    const type = cfg.type || 'pushplus';
     UI.toast('正在发送测试消息...','info');
     try{
-      const body = JSON.stringify({
-        msgtype:'text',
-        text:{ content:'【南崽出海】Webhook测试消息:配置成功!客户预约后将自动推送至此群。' }
-      });
-      let res;
-      if(useProxy){
-        res = await fetch(this.CORS_PROXY + encodeURIComponent(url), {
+      const title = '【南崽出海】测试消息';
+      const content = '🎉 配置成功!客户预约后将自动推送订单通知至此微信。';
+      let ok = false;
+      let errMsg = '';
+
+      if(type==='pushplus'){
+        if(!cfg.token){ UI.toast('请先填写PushPlus Token','error'); return; }
+        const res = await fetch('https://www.pushplus.plus/send', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body
+          body: JSON.stringify({
+            token: cfg.token,
+            title: title,
+            content: content,
+            template: 'txt'
+          })
         });
+        const data = await res.json();
+        if(data.code===200) ok = true;
+        else errMsg = data.msg || '推送失败';
       }else{
-        res = await fetch(url, {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body
-        });
+        if(!cfg.url){ UI.toast('请先填写Webhook地址','error'); return; }
+        const body = JSON.stringify({ msgtype:'text', text:{ content: content } });
+        let res;
+        if(cfg.useProxy){
+          res = await fetch('https://api.allorigins.win/post?url=' + encodeURIComponent(cfg.url), {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body
+          });
+          const data = await res.json();
+          const result = data.contents ? JSON.parse(data.contents) : data;
+          if(result.errcode===0) ok = true;
+          else errMsg = result.errmsg || '推送失败';
+        }else{
+          res = await fetch(cfg.url, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body
+          });
+          const data = await res.json();
+          if(data.errcode===0) ok = true;
+          else errMsg = data.errmsg || '推送失败';
+        }
       }
-      if(!res.ok){ UI.toast(`推送失败(${res.status})`,'error'); return; }
-      const data = await res.json();
-      const result = data.contents ? JSON.parse(data.contents) : data;
-      if(result.errcode===0) UI.toast('测试消息已推送至企业微信群 ✓','success');
-      else UI.toast('推送失败:'+(result.errmsg||'未知错误'),'error');
+
+      if(ok) UI.toast('测试消息发送成功 ✓','success');
+      else UI.toast('推送失败:'+errMsg,'error');
     }catch(e){
       UI.toast('网络异常:'+e.message,'error');
     }
