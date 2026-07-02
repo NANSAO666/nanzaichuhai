@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>南崽出海 · 管理员后台</title>
+<!-- ========== Tailwind CSS via CDN ========== -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- ========== Google Fonts: 标题宋体轻奢 + 正文黑体 ========== -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script>
+// ========== Tailwind 品牌主题扩展 ==========
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        deepsea: '#004A7C',   // 主色 深海蓝
+        gold: '#D4AF37',      // 点缀 轻奢金
+        orange: '#FF7E00',    // CTA 操作强调橙
+        seagrad: '#E8F1F8',   // 浅海蓝
+      },
+      fontFamily: {
+        serif: ['"Noto Serif SC"', 'serif'],
+        sans: ['"Noto Sans SC"', 'sans-serif'],
+      }
+    }
+  }
+}
+</script>
+<style>
+/* ========== 全局 CSS 变量与基础样式 ========== */
+:root{
+  --deepsea:#004A7C;
+  --gold:#D4AF37;
+  --orange:#FF7E00;
+  --seagrad:#E8F1F8;
+  --shadow-soft:0 8px 30px rgba(0,74,124,.08);
+  --shadow-hover:0 16px 40px rgba(0,74,124,.16);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:"Noto Sans SC",sans-serif;
+  background:linear-gradient(180deg,#ffffff 0%,var(--seagrad) 100%);
+  min-height:100vh;
+  color:#1a2a3a;
+}
+.font-serif-display{font-family:"Noto Serif SC",serif;}
+/* 卡片柔和阴影 + 悬浮加深 */
+.card-soft{box-shadow:var(--shadow-soft);transition:all .3s ease;border-radius:16px;}
+.card-soft:hover{box-shadow:var(--shadow-hover);}
+/* 主按钮 深海蓝渐变 + 金色边框 */
+.btn-primary{
+  background:linear-gradient(135deg,#004A7C 0%,#0066a8 100%);
+  color:#fff;border:1px solid rgba(212,175,55,.5);
+  transition:all .25s ease;
+}
+.btn-primary:hover{transform:scale(1.03);box-shadow:0 8px 20px rgba(0,74,124,.35);border-color:var(--gold);}
+.btn-orange{background:linear-gradient(135deg,#FF7E00 0%,#ff9933 100%);color:#fff;transition:all .25s ease;}
+.btn-orange:hover{transform:scale(1.03);box-shadow:0 8px 20px rgba(255,126,0,.4);}
+.btn-gold{background:linear-gradient(135deg,#D4AF37 0%,#e6c558 100%);color:#3a2e00;transition:all .25s ease;}
+.btn-gold:hover{transform:scale(1.03);}
+/* 输入框统一样式 */
+.input-soft{
+  border:1px solid #d6e2ec;border-radius:10px;padding:10px 14px;
+  background:#fff;transition:all .2s;width:100%;
+}
+.input-soft:focus{outline:none;border-color:var(--deepsea);box-shadow:0 0 0 3px rgba(0,74,124,.12);}
+/* 骨架屏 shimmer */
+.skeleton{
+  background:linear-gradient(90deg,#eef4f9 25%,#dde8f0 37%,#eef4f9 63%);
+  background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:8px;
+}
+@keyframes shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
+/* 游艇航行加载动画 */
+.yacht-loader{
+  display:inline-block;animation:yachtSail 2s ease-in-out infinite;
+}
+@keyframes yachtSail{
+  0%,100%{transform:translateX(-6px) rotate(-3deg)}
+  50%{transform:translateX(6px) rotate(3deg)}
+}
+/* 模块切换淡入 */
+.fade-in{animation:fadeIn .35s ease-out}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+/* 侧边导航激活态 */
+.nav-item.active{
+  background:linear-gradient(135deg,rgba(0,74,124,.12),rgba(212,175,55,.08));
+  color:var(--deepsea);border-left:3px solid var(--gold);font-weight:600;
+}
+/* 滚动条美化 */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#bcd0de;border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+/* 图片墙封面金边 */
+.cover-gold{box-shadow:0 0 0 3px var(--gold),0 8px 20px rgba(212,175,55,.3)}
+/* 状态徽章 */
+.badge-pending{background:#FEF3C7;color:#92400E}
+.badge-done{background:#D1FAE5;color:#065F46}
+.badge-cancel{background:#FEE2E2;color:#991B1B}
+/* Toast 动画 */
+.toast-in{animation:toastIn .3s ease}
+@keyframes toastIn{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
+/* ========== 移动端适配 ========== */
+.sidebar-open{transform:translateX(0)!important;}
+.sidebar-overlay{display:none;}
+.sidebar-overlay.active{display:block;}
+@media (max-width: 768px){
+  .admin-content{padding-left:0!important;padding-right:0!important;}
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     精致游艇 LOGO SVG 定义(可复用)
+============================================================ -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="iconYacht" viewBox="0 0 100 100">
+      <!-- 太阳光芒 -->
+      <g stroke="#D4AF37" stroke-width="1.5" stroke-linecap="round" fill="none">
+        <line x1="50" y1="5" x2="50" y2="13"/>
+        <line x1="50" y1="5" x2="50" y2="13" transform="rotate(18 50 20)"/>
+        <line x1="50" y1="5" x2="50" y2="13" transform="rotate(36 50 20)"/>
+        <line x1="50" y1="5" x2="50" y2="13" transform="rotate(54 50 20)"/>
+        <line x1="50" y1="5" x2="50" y2="13" transform="rotate(72 50 20)"/>
+        <line x1="50" y1="5" x2="50" y2="13" transform="rotate(90 50 20)"/>
+        <line x1="50" y1="5" x2="50" y2="13" transform="rotate(108 50 20)"/>
+        <line x1="50" y1="5" x2="50" y2="13" transform="rotate(126 50 20)"/>
+        <line x1="50" y1="5" x2="50" y2="13" transform="rotate(144 50 20)"/>
+        <line x1="50" y1="5" x2="50" y2="13" transform="rotate(162 50 20)"/>
+        <path d="M22 26 A 32 32 0 0 1 78 26" fill="none" stroke="#D4AF37" stroke-width="1.5"/>
+      </g>
+      <!-- 游艇船体 -->
+      <g fill="none" stroke="#D4AF37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <!-- 船身底部 -->
+        <path d="M8 62 Q 14 68 26 68 L 78 68 Q 88 68 92 62 L 86 58 L 14 58 Z" fill="#004A7C" stroke="#D4AF37"/>
+        <!-- 船身甲板线 -->
+        <path d="M14 58 L 22 48 L 72 48 L 86 58" />
+        <!-- 上层甲板 -->
+        <path d="M28 48 L 32 40 L 62 40 L 66 48" />
+        <!-- 驾驶舱顶 -->
+        <path d="M36 40 L 40 34 L 56 34 L 58 40" />
+        <!-- 桅杆 -->
+        <line x1="46" y1="34" x2="46" y2="20"/>
+        <line x1="54" y1="34" x2="54" y2="22"/>
+        <!-- 桅杆顶部小圆 -->
+        <circle cx="46" cy="19" r="1.5" fill="#D4AF37"/>
+        <circle cx="54" cy="21" r="1.2" fill="#D4AF37"/>
+        <!-- 舷窗 -->
+        <circle cx="28" cy="63" r="1.8" fill="#D4AF37"/>
+        <circle cx="38" cy="63" r="1.8" fill="#D4AF37"/>
+        <circle cx="48" cy="63" r="1.8" fill="#D4AF37"/>
+        <circle cx="58" cy="63" r="1.8" fill="#D4AF37"/>
+        <circle cx="68" cy="63" r="1.8" fill="#D4AF37"/>
+        <!-- 船头锚 -->
+        <path d="M88 58 L 92 56 Q 94 54 92 52 L 90 51"/>
+      </g>
+      <!-- 海浪 -->
+      <g fill="none" stroke="#87CEEB" stroke-width="1.5" stroke-linecap="round">
+        <path d="M2 74 Q 12 70 22 74 T 42 74 T 62 74 T 82 74 T 100 74" opacity="0.8"/>
+        <path d="M2 79 Q 16 75 30 79 T 58 79 T 86 79 T 100 79" stroke="#D4AF37" opacity="0.6"/>
+        <path d="M2 84 Q 10 81 20 84 T 40 84 T 60 84 T 80 84 T 100 84" opacity="0.5"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ============================================================
+     顶部品牌栏
+============================================================ -->
+<header class="sticky top-0 z-40 backdrop-blur-md bg-white/85 border-b border-gray-200">
+  <div class="flex items-center justify-between px-4 md:px-6 py-3">
+    <div class="flex items-center gap-3">
+      <!-- 移动端菜单按钮 -->
+      <button onclick="UI.toggleSidebar()" class="md:hidden w-9 h-9 flex items-center justify-center rounded-lg bg-seagrad text-deepsea">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+      <!-- 精致游艇 LOGO -->
+      <div class="relative flex-shrink-0 w-11 h-11 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-deepsea to-deepsea/80 flex items-center justify-center shadow-md">
+        <svg class="w-9 h-9 md:w-10 md:h-10"><use href="#iconYacht"/></svg>
+        <div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-gold flex items-center justify-center text-[8px] font-bold text-deepsea">南</div>
+      </div>
+      <div>
+        <h1 class="font-serif-display text-lg md:text-xl font-bold text-deepsea leading-tight">南崽出海</h1>
+        <p class="text-[10px] md:text-xs text-gray-500 hidden sm:block">管理员后台 · 赴一场江海浪漫</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 md:gap-3">
+      <span id="versionTag" class="hidden sm:inline text-xs px-3 py-1 rounded-full bg-seagrad text-deepsea">数据版本 v1</span>
+      <button onclick="SyncModule.syncToClient()" class="btn-gold text-xs md:text-sm px-3 md:px-4 py-1.5 md:py-2 rounded-lg font-medium whitespace-nowrap">一键同步</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================
+     侧边栏遮罩(移动端)
+============================================================ -->
+<div id="sidebarOverlay" class="sidebar-overlay fixed inset-0 bg-black/50 z-40 md:hidden" onclick="UI.toggleSidebar()"></div>
+
+<!-- ============================================================
+     主体布局:左侧导航 + 右侧内容
+============================================================ -->
+<div class="flex max-w-[1400px] mx-auto">
+  <!-- 侧边导航(桌面端固定,移动端抽屉) -->
+  <aside id="sidebar" class="fixed md:static md:translate-x-0 -translate-x-full top-0 left-0 w-64 md:w-56 flex-shrink-0 bg-white md:bg-transparent z-50 md:z-0 h-full md:h-auto md:py-6 md:pr-3 transition-transform duration-300 ease-out" style="height:100vh;overflow-y:auto">
+    <div class="p-4 md:p-0 md:sticky md:top-[72px]">
+      <nav id="navList" class="space-y-1 pt-4 md:pt-0">
+        <!-- 由 JS 渲染 -->
+      </nav>
+      <div class="mt-6 p-3 rounded-xl bg-gradient-to-br from-deepsea/5 to-gold/5 text-xs text-gray-500 leading-relaxed">
+        <p class="font-semibold text-deepsea mb-1">运营提示</p>
+        修改配置后点击「一键同步前端」,客户页面刷新即可看到最新数据。
+      </div>
+    </div>
+  </aside>
+
+  <!-- 右侧内容区 -->
+  <main class="flex-1 min-w-0 p-3 sm:p-4 md:p-6 admin-content">
+    <div id="contentArea"><!-- 模块内容渲染 --></div>
+  </main>
+</div>
+
+<!-- ============================================================
+     Toast 与 Modal 容器
+============================================================ -->
+<div id="toastBox" class="fixed top-20 right-6 z-50 space-y-2"></div>
+<div id="modalRoot"></div>
+
+<script>
+/* ============================================================
+   ███████ ██████  ███████ ███    ██  ██████  ██████   ██████
+   ██      ██   ██ ██      ████   ██ ██    ██ ██   ██ ██    ██
+   ███████ ██████  █████   ██ ██  ██ ██    ██ ██████  ██    ██
+        ██ ██      ██      ██  ██ ██ ██    ██ ██   ██ ██    ██
+   ███████ ██      ███████ ██   ████  ██████  ██   ██  ██████
+   南崽出海 管理员后台 主脚本 (模块化分层 · 中文注释完整)
+============================================================ */
+
+/* ============================================================
+   模块一:StorageModule 本地存储层
+   统一管理 LocalStorage 读写,分层键隔离,JSON 序列化
+============================================================ */
+const StorageModule = {
+  KEYS: {
+    BRAND: 'nzch_brand',
+    CLUBS: 'nzch_clubs',
+    AI: 'nzch_ai_config',
+    WEBHOOK: 'nzch_webhook',
+    MANUAL: 'nzch_manual',
+    ORDERS: 'nzch_orders',
+    VERSION: 'nzch_version',
+  },
+  // 通用读取(失败返回 fallback)
+  get(key, fallback){
+    try{
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    }catch(e){
+      console.warn('[Storage] 读取失败', key, e);
+      return fallback;
+    }
+  },
+  // 通用写入
+  set(key, value){
+    try{
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    }catch(e){
+      // 容量超限兜底提示(图片 Base64 可能撑爆 5MB)
+      UI.toast('存储空间不足,请精简图片素材后重试','error');
+      console.error('[Storage] 写入失败', key, e);
+      return false;
+    }
+  },
+  // 单键删除
+  remove(key){ localStorage.removeItem(key); },
+
+  // ===== 业务封装 =====
+  loadBrand(){ return this.get(this.KEYS.BRAND, null); },
+  saveBrand(b){ return this.set(this.KEYS.BRAND, b); },
+
+  loadClubs(){ return this.get(this.KEYS.CLUBS, null); },
+  saveClubs(c){ return this.set(this.KEYS.CLUBS, c); },
+
+  loadAI(){ return this.get(this.KEYS.AI, null); },
+  saveAI(a){ return this.set(this.KEYS.AI, a); },
+
+  loadWebhook(){ return this.get(this.KEYS.WEBHOOK, ''); },
+  saveWebhook(w){ return this.set(this.KEYS.WEBHOOK, w); },
+
+  loadManual(){ return this.get(this.KEYS.MANUAL, null); },
+  saveManual(m){ return this.set(this.KEYS.MANUAL, m); },
+
+  loadOrders(){ return this.get(this.KEYS.ORDERS, []); },
+  saveOrders(o){ return this.set(this.KEYS.ORDERS, o); },
+
+  getVersion(){ return this.get(this.KEYS.VERSION, 1); },
+  bumpVersion(){ const v = this.getVersion() + 1; this.set(this.KEYS.VERSION, v); return v; },
+};
+
+/* ============================================================
+   模块二:DefaultDataModule 默认数据初始化
+   内置五大广州游艇俱乐部 + 品牌配置 + AI配置 + 说明书
+============================================================ */
+const DefaultDataModule = {
+  // 品牌默认配置(微信DaogoG / 电话13003192344)
+  brand(){
+    return {
+      brandName: '南崽出海',
+      slogan: '南崽出海,赴一场江海浪漫',
+      wechat: 'DaogoG',
+      phone: '13003192344',
+      address: '广州市南沙区港前大道南崽出海游艇会',
+      businessHours: '09:00 - 21:00',
+      overtimeRate: 500,         // 超时每小时加价
+      brandImage: '',            // 品牌宣传大图 Base64
+      intro: '南崽出海专注广州五大游艇俱乐部高端出海体验,提供商务接待、求婚布置、珠江夜游、团建派对、短视频拍摄等多元化服务,精致游艇+专业船长+私域定制,赴一场江海浪漫。'
+    };
+  },
+
+  // 五大俱乐部默认数据(含船型定价、增值服务、出海时段)
+  clubs(){
+    return [
+      {
+        id:'nansha', name:'南沙游艇会', area:'南沙区',
+        address:'广州市南沙区港前大道南段',
+        route:'南沙客运港 → 龙穴岛 → 凫洲大桥 → 出海口',
+        facilities:['泊位120个','VIP会议厅','海景餐厅','专属停车场','船舶维修'],
+        maxPax:60, timeSlots:['09:00-12:00','14:00-17:00','19:00-22:00'],
+        refundRule:'提前24小时全额退款,12-24小时退50%,12小时内不退',
+        active:true,
+        pricing:[
+          {size:'40英尺',price:2800},{size:'50英尺',price:4500},
+          {size:'60英尺',price:6800},{size:'70英尺',price:9800},{size:'80英尺',price:13800}
+        ],
+        addons:[
+          {name:'航拍跟拍',price:800},{name:'酒水套餐',price:1200},
+          {name:'摩托艇',price:600},{name:'DJ驻场',price:1500},{name:'求婚布置',price:2000}
+        ],
+        images:[],
+        intro:'南沙游艇会是广州规模最大的游艇会,拥有120个泊位,直达出海口,适合远海观光、商务接待与大型派对,海景开阔,出航体验一流。'
+      },
+      {
+        id:'taigucang', name:'太古仓游艇会', area:'海珠区',
+        address:'广州市海珠区太古仓码头',
+        route:'太古仓 → 珠江夜游 → 海印桥 → 广州塔',
+        facilities:['文艺码头','露天酒吧','摄影基地','停车场','咖啡厅'],
+        maxPax:40, timeSlots:['10:00-13:00','15:00-18:00','19:30-22:30'],
+        refundRule:'提前24小时全额退款,12小时内退30%',
+        active:true,
+        pricing:[
+          {size:'40英尺',price:2600},{size:'50英尺',price:4200},
+          {size:'60英尺',price:6500},{size:'70英尺',price:9200},{size:'80英尺',price:13000}
+        ],
+        addons:[
+          {name:'航拍跟拍',price:800},{name:'酒水套餐',price:1000},
+          {name:'珠江夜游加餐',price:1500},{name:'摄影团队',price:1200}
+        ],
+        images:[],
+        intro:'太古仓游艇会位于百年文艺码头,珠江夜景绝佳,适合求婚、约会、短视频拍摄,文艺气息浓厚,是广州热门打卡出海点。'
+      },
+      {
+        id:'changzhou', name:'长洲岛新担涌码头', area:'黄埔区',
+        address:'广州市黄埔区长洲岛新担涌',
+        route:'长洲岛 → 黄埔军校旧址 → 大吉沙 → 江心岛',
+        facilities:['历史海岛','军事文化','农家餐饮','停车场','垂钓区'],
+        maxPax:35, timeSlots:['09:00-12:00','14:00-17:00','18:00-21:00'],
+        refundRule:'提前24小时全额退款,12小时内不退',
+        active:true,
+        pricing:[
+          {size:'40英尺',price:2400},{size:'50英尺',price:3900},
+          {size:'60英尺',price:6200},{size:'70英尺',price:8800},{size:'80英尺',price:12500}
+        ],
+        addons:[
+          {name:'航拍跟拍',price:700},{name:'酒水套餐',price:900},
+          {name:'垂钓装备',price:500},{name:'农家餐配送',price:800}
+        ],
+        images:[],
+        intro:'长洲岛新担涌码头毗邻黄埔军校旧址,历史人文浓郁,江心岛风光旖旎,适合家庭出游、垂钓休闲、文化体验出海。'
+      },
+      {
+        id:'lianhua', name:'莲花山游艇会', area:'番禺区',
+        address:'广州市番禺区莲花山港',
+        route:'莲花山 → 狮子洋 → 海鸥岛 → 莲花山塔',
+        facilities:['莲花山景','休闲度假','餐饮服务','停车场','观景平台'],
+        maxPax:45, timeSlots:['09:00-12:00','13:00-16:00','17:00-20:00'],
+        refundRule:'提前24小时全额退款,12-24小时退50%',
+        active:true,
+        pricing:[
+          {size:'40英尺',price:2500},{size:'50英尺',price:4100},
+          {size:'60英尺',price:6400},{size:'70英尺',price:9000},{size:'80英尺',price:12800}
+        ],
+        addons:[
+          {name:'航拍跟拍',price:750},{name:'酒水套餐',price:950},
+          {name:'观景平台VIP',price:600},{name:'海钓体验',price:700}
+        ],
+        images:[],
+        intro:'莲花山游艇会背靠莲花山,面朝狮子洋,山水相映,适合休闲度假、家庭聚会、海钓体验,远离城市喧嚣。'
+      },
+      {
+        id:'pazhouwan', name:'琶洲湾游艇会', area:'海珠区',
+        address:'广州市海珠区琶洲会展中心江畔',
+        route:'琶洲 → 广州塔 → 海心沙 → 猎德大桥',
+        facilities:['CBD江景','商务接待','会议厅','高端餐饮','VIP休息室'],
+        maxPax:50, timeSlots:['10:00-13:00','14:00-17:00','19:00-22:00'],
+        refundRule:'提前24小时全额退款,12小时内退30%',
+        active:true,
+        pricing:[
+          {size:'40英尺',price:2700},{size:'50英尺',price:4400},
+          {size:'60英尺',price:6700},{size:'70英尺',price:9500},{size:'80英尺',price:13500}
+        ],
+        addons:[
+          {name:'航拍跟拍',price:800},{name:'酒水套餐',price:1200},
+          {name:'商务会议布置',price:1800},{name:'高端餐饮',price:2500}
+        ],
+        images:[],
+        intro:'琶洲湾游艇会坐拥CBD江景,广州塔与小蛮腰尽收眼底,顶级商务接待首选,适合企业团建、客户答谢、高端社交。'
+      }
+    ];
+  },
+
+  // AI 默认配置(OpenAI 兼容协议,适配硅基流动/智谱/Kimi等免费API)
+  aiConfig(){
+    return {
+      apiUrl:'https://api.siliconflow.cn/v1/chat/completions',
+      apiKey:'',
+      model:'Qwen/Qwen2.5-7B-Instruct',
+      systemPrompt:'你是广州【南崽出海】专属游艇运营顾问,商家微信DaogoG,联系电话13003192344;精通南沙、太古仓、琶洲湾、长洲岛、莲花山全部码头航线、租赁价格、出海规则,输出文案轻奢高级适配私域、朋友圈、短视频,所有报价、预约规则严格按照后台配置输出,简洁无冗余内容,客户咨询可主动推送商家微信和电话。',
+      quickQuestions:[
+        '南沙游艇会怎么走?',
+        '求婚推荐哪个码头?',
+        '珠江夜游哪家体验最好?',
+        '报价包含哪些服务?',
+        '出海需要提前多久预约?',
+        '船上可以带宠物吗?'
+      ]
+    };
+  },
+
+  // 默认说明书章节
+  manual(){
+    return [
+      {id:'m1', title:'码头筛选教程', content:'1. 打开南崽出海首页,向下滑动至「码头筛选专区」。\n2. 点击顶部区域标签(南沙区/海珠区/黄埔区/番禺区)可按区域筛选。\n3. 点击任一码头卡片进入详情页,查看码头实景图、游艇实拍、配套设施。\n4. 选定心仪码头后,点击「立即预约」进入预约表单。', image:''},
+      {id:'m2', title:'AI智能文案使用', content:'1. 进入码头详情页,点击「AI生成文案」按钮。\n2. 选择使用场景(商务接待/求婚/团建/珠江夜游/短视频)。\n3. 选择文案风格(轻奢高级/活泼有趣/文艺浪漫)。\n4. 点击「生成文案」,系统自动调用AI生成专属文案。\n5. 点击「一键复制」即可粘贴到朋友圈、私域或短视频配文。', image:''},
+      {id:'m3', title:'报价测算流程', content:'1. 在码头详情页点击「智能报价」按钮。\n2. 选择游艇船型(40/50/60/70/80英尺),价格自动显示。\n3. 勾选增值服务(航拍/酒水/摩托艇等),价格累加。\n4. 系统自动生成清晰报价明细单,客户不可修改定价。\n5. 满意后点击「立即预约」直接进入表单。', image:''},
+      {id:'m4', title:'在线预约全流程', content:'1. 在预约表单依次选择:俱乐部、船型、出海日期、时段、出行人数。\n2. 填写姓名、手机号(必填),可填写个性化出行备注。\n3. 点击「提交预约」,系统校验必填项。\n4. 提交成功后弹窗显示唯一订单编号。\n5. 商家微信DaogoG、电话13003192344会快速联系您确认档期。', image:''},
+      {id:'m5', title:'退款须知', content:'1. 各码头退款规则不同,详情见码头介绍页。\n2. 一般规则:提前24小时全额退款,12-24小时退50%,12小时内不退。\n3. 如遇恶劣天气无法出海,可全额改期或退款。\n4. 退款请联系商家微信DaogoG或电话13003192344办理。', image:''},
+      {id:'m6', title:'常见FAQ', content:'Q: 出海安全吗?\nA: 全程专业船长护航,配备救生设备,安全有保障。\n\nQ: 可以自带酒水食物吗?\nA: 可以自带,也可选购船上酒水套餐。\n\nQ: 出海时长多久?\nA: 标准时段3小时,可加时,超时按后台配置加价。\n\nQ: 儿童可以参加吗?\nA: 可以,需成人陪同并穿救生衣。\n\nQ: 如何联系商家?\nA: 微信DaogoG,电话13003192344。', image:''}
+    ];
+  },
+
+  // 首次加载初始化所有默认数据
+  initAll(){
+    if(!StorageModule.loadBrand()) StorageModule.saveBrand(this.brand());
+    if(!StorageModule.loadClubs()) StorageModule.saveClubs(this.clubs());
+    if(!StorageModule.loadAI()) StorageModule.saveAI(this.aiConfig());
+    if(!StorageModule.loadWebhook()) StorageModule.saveWebhook('');
+    if(!StorageModule.loadManual()) StorageModule.saveManual(this.manual());
+    if(!StorageModule.loadOrders()) StorageModule.saveOrders([]);
+    if(!StorageModule.getVersion()) StorageModule.set(StorageModule.KEYS.VERSION, 1);
+  }
+};
+
+/* ============================================================
+   模块三:UI 通用工具层
+   Toast 提示 / Modal 弹窗 / Tab 切换 / 确认框 / 游艇加载动画
+============================================================ */
+const UI = {
+  // Toast 提示(success/error/info)
+  toast(msg, type='info'){
+    const colors = {success:'bg-green-600',error:'bg-red-500',info:'bg-deepsea',warn:'bg-orange'};
+    const icon = type==='success'?'✓':type==='error'?'✕':type==='warn'?'!':'i';
+    const el = document.createElement('div');
+    el.className = `toast-in ${colors[type]||colors.info} text-white px-5 py-3 rounded-xl shadow-lg text-sm flex items-center gap-2 max-w-xs`;
+    el.innerHTML = `<span class="font-bold w-5 h-5 rounded-full bg-white/25 flex items-center justify-center text-xs">${icon}</span><span>${msg}</span>`;
+    document.getElementById('toastBox').appendChild(el);
+    setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateY(-10px)'; setTimeout(()=>el.remove(),300); }, 2800);
+  },
+
+  // Modal 弹窗(自定义内容)
+  modal(title, bodyHtml, footerHtml=''){
+    const root = document.getElementById('modalRoot');
+    root.innerHTML = `
+      <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" id="modalMask">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] overflow-hidden flex flex-col fade-in">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <h3 class="font-serif-display text-lg font-bold text-deepsea">${title}</h3>
+            <button onclick="UI.closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+          </div>
+          <div class="px-6 py-5 overflow-y-auto flex-1">${bodyHtml}</div>
+          ${footerHtml?`<div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">${footerHtml}</div>`:''}
+        </div>
+      </div>`;
+    document.getElementById('modalMask').addEventListener('click',e=>{ if(e.target.id==='modalMask') this.closeModal(); });
+  },
+  closeModal(){ document.getElementById('modalRoot').innerHTML=''; },
+
+  // 确认框
+  confirm(msg, onOk){
+    this.modal('请确认', `<p class="text-gray-600 leading-relaxed">${msg}</p>`,
+      `<button onclick="UI.closeModal()" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">取消</button>
+       <button onclick="(${onOk})();UI.closeModal()" class="btn-orange px-5 py-2 rounded-lg font-medium">确定</button>`);
+  },
+
+  // 游艇航行加载动画
+  yachtLoader(text='加载中'){
+    return `<div class="flex flex-col items-center justify-center py-12">
+      <svg width="80" height="80" viewBox="0 0 64 64" class="yacht-loader">
+        <path d="M8 44 Q12 50 20 50 L44 50 Q52 50 56 44 Z" fill="#004A7C"/>
+        <path d="M16 44 L20 30 L40 30 L44 44" fill="none" stroke="#D4AF37" stroke-width="2"/>
+        <path d="M30 30 L30 18 L42 28 L30 28" fill="none" stroke="#004A7C" stroke-width="2"/>
+        <path d="M6 52 Q16 56 32 56 T58 52" fill="none" stroke="#004A7C" stroke-width="1.5" opacity=".5"/>
+      </svg>
+      <p class="text-sm text-gray-500 mt-3">${text}...</p>
+    </div>`;
+  },
+
+  // 移动端侧边栏开关
+  toggleSidebar(){
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    if(!sidebar) return;
+    const isOpen = sidebar.classList.contains('sidebar-open');
+    if(isOpen){
+      sidebar.classList.remove('sidebar-open');
+      overlay.classList.remove('active');
+    }else{
+      sidebar.classList.add('sidebar-open');
+      overlay.classList.add('active');
+    }
+  },
+  // 侧边 Tab 切换
+  switchTab(key){
+    // 移动端点击后自动关闭侧边栏
+    if(window.innerWidth < 768){
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+      if(sidebar) sidebar.classList.remove('sidebar-open');
+      if(overlay) overlay.classList.remove('active');
+    }
+    document.querySelectorAll('#navList .nav-item').forEach(el=>el.classList.remove('active'));
+    const btn = document.querySelector(`#navList [data-key="${key}"]`);
+    if(btn) btn.classList.add('active');
+    const area = document.getElementById('contentArea');
+    area.classList.remove('fade-in'); void area.offsetWidth; area.classList.add('fade-in');
+    // 路由到对应模块渲染
+    const router = {
+      brand: ()=>BrandModule.render(),
+      clubs: ()=>ClubModule.render(),
+      images: ()=>ImageModule.render(),
+      ai: ()=>AIModule.render(),
+      webhook: ()=>WebhookModule.render(),
+      manual: ()=>ManualModule.render(),
+      orders: ()=>OrderModule.render(),
+      reset: ()=>ResetModule.render(),
+    };
+    (router[key]||router.brand)();
+  }
+};
+
+/* ============================================================
+   模块四:SyncModule 全局参数同步模块
+   后台保存后刷新版本号,前端校验版本自动拉取
+============================================================ */
+const SyncModule = {
+  // 后台保存后调用,刷新版本号并提示
+  syncToClient(){
+    const v = StorageModule.bumpVersion();
+    document.getElementById('versionTag').textContent = `数据版本 v${v}`;
+    UI.toast('已同步至客户前端,客户刷新即可看到最新数据','success');
+  }
+};
+
+/* ============================================================
+   模块五:ImageModule 图片素材管理模块
+   Canvas 压缩 Base64 / 上传 / 删除 / 设封面 / 预览
+============================================================ */
+const ImageModule = {
+  // 当前正在管理图片的俱乐部 ID
+  currentClubId: null,
+
+  // 文件压缩为 Base64(maxWidth 限宽,quality 质量)
+  compressImage(file, maxWidth=1280, quality=0.82){
+    return new Promise((resolve,reject)=>{
+      if(!file.type.startsWith('image/')){ reject(new Error('非图片文件')); return; }
+      const reader = new FileReader();
+      reader.onload = e=>{
+        const img = new Image();
+        img.onload = ()=>{
+          let {width,height} = img;
+          if(width > maxWidth){ height = height * maxWidth / width; width = maxWidth; }
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = ()=>reject(new Error('图片加载失败'));
+        img.src = e.target.result;
+      };
+      reader.onerror = ()=>reject(new Error('文件读取失败'));
+      reader.readAsDataURL(file);
+    });
+  },
+
+  // 添加图片到指定俱乐部
+  async addImage(clubId, file, category='游艇实拍'){
+    try{
+      const base64 = await this.compressImage(file);
+      const clubs = StorageModule.loadClubs();
+      const club = clubs.find(c=>c.id===clubId);
+      if(!club) throw new Error('俱乐部不存在');
+      const isFirst = club.images.length === 0; // 首张自动设封面
+      club.images.push({
+        id: 'img_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        base64, category, cover: isFirst
+      });
+      StorageModule.saveClubs(clubs);
+      return true;
+    }catch(e){
+      UI.toast('图片上传失败:'+e.message,'error');
+      return false;
+    }
+  },
+
+  // 删除图片
+  removeImage(clubId, imgId){
+    const clubs = StorageModule.loadClubs();
+    const club = clubs.find(c=>c.id===clubId);
+    if(!club) return;
+    const wasCover = club.images.find(i=>i.id===imgId)?.cover;
+    club.images = club.images.filter(i=>i.id!==imgId);
+    // 若删除的是封面,自动将首张设为封面
+    if(wasCover && club.images.length>0) club.images[0].cover = true;
+    StorageModule.saveClubs(clubs);
+  },
+
+  // 设为封面
+  setCover(clubId, imgId){
+    const clubs = StorageModule.loadClubs();
+    const club = clubs.find(c=>c.id===clubId);
+    if(!club) return;
+    club.images.forEach(i=> i.cover = (i.id===imgId));
+    StorageModule.saveClubs(clubs);
+  },
+
+  // ===== 渲染:图片素材管理面板 =====
+  render(){
+    const clubs = StorageModule.loadClubs();
+    this.currentClubId = this.currentClubId || clubs[0]?.id;
+    const clubSel = clubs.map(c=>`<option value="${c.id}" ${c.id===this.currentClubId?'selected':''}>${c.name}</option>`).join('');
+    const club = clubs.find(c=>c.id===this.currentClubId) || clubs[0];
+    const imgs = club ? club.images : [];
+
+    const grid = imgs.length ? imgs.map(im=>`
+      <div class="relative group rounded-xl overflow-hidden border border-gray-200 ${im.cover?'cover-gold':''}">
+        <img src="${im.base64}" class="w-full h-40 object-cover" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect fill=%22%23E8F1F8%22 width=%2264%22 height=%2264%22/><path d=%22M8 44 Q12 50 20 50 L44 50 Q52 50 56 44 Z%22 fill=%22%23004A7C%22/><path d=%22M16 44 L20 30 L40 30 L44 44%22 fill=%22none%22 stroke=%22%23D4AF37%22 stroke-width=%222%22/></svg>'"/>
+        ${im.cover?'<span class="absolute top-2 left-2 text-xs px-2 py-0.5 rounded-full bg-gold text-deepsea font-semibold">封面</span>':''}
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+          <button onclick="ImageModule.setCover('${club.id}','${im.id}');ImageModule.render()" class="text-xs px-3 py-1 rounded-full bg-gold text-deepsea font-medium">设封面</button>
+          <button onclick="ImageModule.preview('${im.base64}')" class="text-xs px-3 py-1 rounded-full bg-white/90 text-deepsea font-medium">预览</button>
+          <button onclick="UI.confirm('确认删除这张图片?',()=>{ImageModule.removeImage('${club.id}','${im.id}');ImageModule.render()})" class="text-xs px-3 py-1 rounded-full bg-red-500 text-white font-medium">删除</button>
+        </div>
+        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-1 text-xs text-white">${im.category}</div>
+      </div>`).join('') : `<div class="col-span-full text-center py-12 text-gray-400">该码头暂无图片,点击下方上传按钮添加</div>`;
+
+    document.getElementById('contentArea').innerHTML = `
+      <div class="mb-5">
+        <h2 class="font-serif-display text-2xl font-bold text-deepsea">图片素材管理</h2>
+        <p class="text-sm text-gray-500 mt-1">为每个码头上传/管理游艇、码头、内饰高清实拍图,支持设封面、预览、删除,保存后同步前端轮播。</p>
+      </div>
+      <div class="bg-white card-soft p-5 mb-5">
+        <div class="flex flex-wrap items-end gap-4">
+          <div class="flex-1 min-w-[200px]">
+            <label class="block text-sm font-medium text-gray-700 mb-1">选择码头</label>
+            <select id="imgClubSel" class="input-soft" onchange="ImageModule.currentClubId=this.value;ImageModule.render()">${clubSel}</select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">图片分类</label>
+            <select id="imgCategory" class="input-soft">
+              <option>码头实景</option><option>游艇实拍</option><option>航线风景</option>
+              <option>内饰图</option><option>宣传海报</option>
+            </select>
+          </div>
+          <label class="btn-orange px-5 py-2.5 rounded-lg font-medium cursor-pointer flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            上传图片
+            <input type="file" accept="image/*" multiple class="hidden" onchange="ImageModule.handleUpload(this)"/>
+          </label>
+        </div>
+        <p class="text-xs text-gray-400 mt-2">支持多选上传,自动压缩为 Base64 存入本地。首张上传自动设为封面。</p>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">${grid}</div>`;
+  },
+
+  // 处理多文件上传
+  async handleUpload(input){
+    const files = Array.from(input.files);
+    if(!files.length) return;
+    const category = document.getElementById('imgCategory').value;
+    UI.toast(`正在上传 ${files.length} 张图片...`,'info');
+    for(const f of files){ await ImageModule.addImage(ImageModule.currentClubId, f, category); }
+    input.value = '';
+    ImageModule.render();
+    SyncModule.syncToClient();
+    UI.toast(`成功上传 ${files.length} 张图片`,'success');
+  },
+
+  // 图片预览大图
+  preview(base64){
+    UI.modal('图片预览', `<img src="${base64}" class="w-full rounded-xl" onerror="this.alt='图片加载失败'"/>`,
+      `<button onclick="UI.closeModal()" class="btn-primary px-5 py-2 rounded-lg">关闭</button>`);
+  }
+};
+
+/* ============================================================
+   模块六:BrandModule 品牌商家配置模块
+============================================================ */
+const BrandModule = {
+  render(){
+    const b = StorageModule.loadBrand() || DefaultDataModule.brand();
+    document.getElementById('contentArea').innerHTML = `
+      <div class="mb-5">
+        <h2 class="font-serif-display text-2xl font-bold text-deepsea">品牌商家配置</h2>
+        <p class="text-sm text-gray-500 mt-1">品牌资料修改后同步至前端首页、底部联系条、预约弹窗、AI问答、微信推送模板。</p>
+      </div>
+      <div class="bg-white card-soft p-6 grid md:grid-cols-2 gap-5">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">品牌名称</label>
+          <input id="bName" class="input-soft" value="${b.brandName}"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">品牌标语</label>
+          <input id="bSlogan" class="input-soft" value="${b.slogan}"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">客服微信</label>
+          <input id="bWechat" class="input-soft" value="${b.wechat}"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">联系电话</label>
+          <input id="bPhone" class="input-soft" value="${b.phone}"/>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">总地址</label>
+          <input id="bAddr" class="input-soft" value="${b.address}"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">营业时间</label>
+          <input id="bHours" class="input-soft" value="${b.businessHours}"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">超时每小时加价(元)</label>
+          <input id="bOvertime" type="number" class="input-soft" value="${b.overtimeRate}"/>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">品牌简介(首页展示)</label>
+          <textarea id="bIntro" rows="3" class="input-soft">${b.intro}</textarea>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">品牌宣传大图(首页Hero背景)</label>
+          <div class="flex items-center gap-4">
+            ${b.brandImage?`<img src="${b.brandImage}" class="w-32 h-20 object-cover rounded-lg border"/>`:`<div class="w-32 h-20 rounded-lg bg-seagrad flex items-center justify-center text-xs text-gray-400">暂无</div>`}
+            <label class="btn-orange px-4 py-2 rounded-lg font-medium cursor-pointer">
+              上传大图
+              <input type="file" accept="image/*" class="hidden" onchange="BrandModule.uploadBrandImg(this)"/>
+            </label>
+            ${b.brandImage?`<button onclick="BrandModule.removeBrandImg()" class="text-sm text-red-500">移除</button>`:''}
+          </div>
+        </div>
+      </div>
+      <div class="mt-5 flex justify-end">
+        <button onclick="BrandModule.save()" class="btn-primary px-8 py-2.5 rounded-lg font-medium">保存并同步前端</button>
+      </div>`;
+  },
+
+  async uploadBrandImg(input){
+    const f = input.files[0]; if(!f) return;
+    const base64 = await ImageModule.compressImage(f, 1600, 0.85);
+    const b = StorageModule.loadBrand();
+    b.brandImage = base64;
+    StorageModule.saveBrand(b);
+    BrandModule.render();
+    UI.toast('品牌大图已上传,记得点保存同步','success');
+  },
+  removeBrandImg(){
+    const b = StorageModule.loadBrand();
+    b.brandImage = '';
+    StorageModule.saveBrand(b);
+    BrandModule.render();
+  },
+
+  save(){
+    const b = {
+      brandName: document.getElementById('bName').value.trim(),
+      slogan: document.getElementById('bSlogan').value.trim(),
+      wechat: document.getElementById('bWechat').value.trim(),
+      phone: document.getElementById('bPhone').value.trim(),
+      address: document.getElementById('bAddr').value.trim(),
+      businessHours: document.getElementById('bHours').value.trim(),
+      overtimeRate: Number(document.getElementById('bOvertime').value)||0,
+      intro: document.getElementById('bIntro').value.trim(),
+      brandImage: (StorageModule.loadBrand()||{}).brandImage || ''
+    };
+    if(!b.brandName || !b.wechat || !b.phone){ UI.toast('品牌名、微信、电话必填','error'); return; }
+    StorageModule.saveBrand(b);
+    SyncModule.syncToClient();
+    UI.toast('品牌配置已保存并同步','success');
+  }
+};
+
+/* ============================================================
+   模块七:ClubModule 游艇俱乐部管理模块
+   列表 / 新增 / 编辑 / 停用 / 删除
+============================================================ */
+const ClubModule = {
+  render(){
+    const clubs = StorageModule.loadClubs();
+    const rows = clubs.map(c=>{
+      const cover = c.images.find(i=>i.cover) || c.images[0];
+      return `
+      <div class="bg-white card-soft p-4 flex gap-4 items-center">
+        <div class="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-seagrad">
+          ${cover?`<img src="${cover.base64}" class="w-full h-full object-cover"/>`:`<div class="w-full h-full flex items-center justify-center text-gray-400 text-xs">无图</div>`}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <h3 class="font-semibold text-deepsea">${c.name}</h3>
+            <span class="text-xs px-2 py-0.5 rounded-full ${c.active?'bg-green-100 text-green-700':'bg-gray-200 text-gray-500'}">${c.active?'营业中':'已停用'}</span>
+          </div>
+          <p class="text-xs text-gray-500 mt-1">${c.area} · ${c.address}</p>
+          <p class="text-xs text-gray-400 mt-0.5">${c.pricing.length}种船型 · ${c.addons.length}项增值服务 · ${c.images.length}张图</p>
+        </div>
+        <div class="flex flex-col gap-2">
+          <button onclick="ClubModule.edit('${c.id}')" class="text-xs px-3 py-1.5 rounded-lg bg-deepsea text-white hover:bg-deepsea/90">编辑</button>
+          <button onclick="ClubModule.toggle('${c.id}')" class="text-xs px-3 py-1.5 rounded-lg ${c.active?'bg-gray-100 text-gray-600':'bg-green-100 text-green-700'}">${c.active?'停用':'启用'}</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('contentArea').innerHTML = `
+      <div class="mb-5 flex justify-between items-center">
+        <div>
+          <h2 class="font-serif-display text-2xl font-bold text-deepsea">游艇俱乐部管理</h2>
+          <p class="text-sm text-gray-500 mt-1">内置五大广州码头,支持新增/编辑/停用,配置船型价格、增值服务、预约退款规则。</p>
+        </div>
+        <button onclick="ClubModule.add()" class="btn-orange px-5 py-2.5 rounded-lg font-medium flex items-center gap-2">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>新增码头
+        </button>
+      </div>
+      <div class="space-y-3">${rows}</div>`;
+  },
+
+  // 新增码头(空白模板)
+  add(){
+    const newClub = {
+      id:'club_'+Date.now(), name:'新码头', area:'南沙区', address:'',
+      route:'', facilities:[], maxPax:30, timeSlots:['09:00-12:00','14:00-17:00'],
+      refundRule:'提前24小时全额退款', active:true,
+      pricing:[{size:'40英尺',price:2500}], addons:[], images:[], intro:''
+    };
+    const clubs = StorageModule.loadClubs();
+    clubs.push(newClub);
+    StorageModule.saveClubs(clubs);
+    this.edit(newClub.id);
+  },
+
+  // 编辑弹窗(完整配置表单)
+  edit(id){
+    const clubs = StorageModule.loadClubs();
+    const c = clubs.find(x=>x.id===id);
+    if(!c) return;
+    const priceRows = c.pricing.map((p,i)=>`
+      <div class="flex gap-2 items-center" data-prow="${i}">
+        <input class="input-soft psize" value="${p.size}" placeholder="船型"/>
+        <input class="input-soft pprice" type="number" value="${p.price}" placeholder="价格"/>
+        <button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>
+      </div>`).join('');
+    const addonRows = c.addons.map((a,i)=>`
+      <div class="flex gap-2 items-center" data-arow="${i}">
+        <input class="input-soft aname" value="${a.name}" placeholder="服务名"/>
+        <input class="input-soft aprice" type="number" value="${a.price}" placeholder="价格"/>
+        <button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>
+      </div>`).join('');
+    const slotRows = c.timeSlots.map(s=>`
+      <div class="flex gap-2 items-center slot-row">
+        <input class="input-soft slot" value="${s}" placeholder="如 09:00-12:00"/>
+        <button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>
+      </div>`).join('');
+    const facRows = c.facilities.map(f=>`
+      <div class="flex gap-2 items-center fac-row">
+        <input class="input-soft fac" value="${f}" placeholder="如 泊位120个"/>
+        <button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>
+      </div>`).join('');
+
+    UI.modal(`编辑码头 · ${c.name}`, `
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-xs text-gray-500">码头名称</label><input id="cName" class="input-soft mt-1" value="${c.name}"/></div>
+          <div><label class="text-xs text-gray-500">所属区域</label>
+            <select id="cArea" class="input-soft mt-1">
+              ${['南沙区','海珠区','黄埔区','番禺区','天河区','荔湾区'].map(a=>`<option ${a===c.area?'selected':''}>${a}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div><label class="text-xs text-gray-500">详细地址</label><input id="cAddr" class="input-soft mt-1" value="${c.address}"/></div>
+        <div><label class="text-xs text-gray-500">航线特色</label><input id="cRoute" class="input-soft mt-1" value="${c.route}"/></div>
+        <div><label class="text-xs text-gray-500">码头简介</label><textarea id="cIntro" rows="2" class="input-soft mt-1">${c.intro}</textarea></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-xs text-gray-500">最大载客</label><input id="cMax" type="number" class="input-soft mt-1" value="${c.maxPax}"/></div>
+          <div><label class="text-xs text-gray-500">状态</label>
+            <select id="cActive" class="input-soft mt-1">
+              <option value="true" ${c.active?'selected':''}>营业中</option>
+              <option value="false" ${!c.active?'selected':''}>已停用</option>
+            </select>
+          </div>
+        </div>
+        <div><label class="text-xs text-gray-500">退款规则</label><input id="cRefund" class="input-soft mt-1" value="${c.refundRule}"/></div>
+
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <label class="text-xs text-gray-500 font-medium">出海时段</label>
+            <button onclick="ClubModule.addRow('slotBox','slot')" class="text-xs text-orange">+ 添加时段</button>
+          </div>
+          <div id="slotBox" class="space-y-2">${slotRows}</div>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <label class="text-xs text-gray-500 font-medium">配套设施</label>
+            <button onclick="ClubModule.addRow('facBox','fac')" class="text-xs text-orange">+ 添加设施</button>
+          </div>
+          <div id="facBox" class="space-y-2">${facRows}</div>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <label class="text-xs text-gray-500 font-medium">船型定价</label>
+            <button onclick="ClubModule.addRow('priceBox','price')" class="text-xs text-orange">+ 添加船型</button>
+          </div>
+          <div id="priceBox" class="space-y-2">${priceRows}</div>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <label class="text-xs text-gray-500 font-medium">增值服务</label>
+            <button onclick="ClubModule.addRow('addonBox','addon')" class="text-xs text-orange">+ 添加服务</button>
+          </div>
+          <div id="addonBox" class="space-y-2">${addonRows}</div>
+        </div>
+      </div>`,
+      `<button onclick="UI.closeModal()" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-600">取消</button>
+       <button onclick="ClubModule.save('${id}')" class="btn-primary px-5 py-2 rounded-lg font-medium">保存</button>
+       <button onclick="UI.confirm('确认删除此码头?(历史订单保留)',()=>{ClubModule.remove('${id}')})" class="px-5 py-2 rounded-lg bg-red-500 text-white font-medium">删除</button>`);
+  },
+
+  // 动态添加一行
+  addRow(boxId, type){
+    const box = document.getElementById(boxId);
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-center';
+    if(type==='price') row.innerHTML = `<input class="input-soft psize" placeholder="船型"/><input class="input-soft pprice" type="number" placeholder="价格"/><button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>`;
+    else if(type==='addon') row.innerHTML = `<input class="input-soft aname" placeholder="服务名"/><input class="input-soft aprice" type="number" placeholder="价格"/><button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>`;
+    else if(type==='slot') row.innerHTML = `<input class="input-soft slot" placeholder="如 09:00-12:00"/><button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>`;
+    else if(type==='fac') row.innerHTML = `<input class="input-soft fac" placeholder="如 泊位120个"/><button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>`;
+    box.appendChild(row);
+  },
+
+  // 保存编辑
+  save(id){
+    const clubs = StorageModule.loadClubs();
+    const c = clubs.find(x=>x.id===id);
+    if(!c){ UI.closeModal(); return; }
+    c.name = document.getElementById('cName').value.trim();
+    c.area = document.getElementById('cArea').value;
+    c.address = document.getElementById('cAddr').value.trim();
+    c.route = document.getElementById('cRoute').value.trim();
+    c.intro = document.getElementById('cIntro').value.trim();
+    c.maxPax = Number(document.getElementById('cMax').value)||30;
+    c.active = document.getElementById('cActive').value==='true';
+    c.refundRule = document.getElementById('cRefund').value.trim();
+    c.timeSlots = Array.from(document.querySelectorAll('#slotBox .slot')).map(i=>i.value.trim()).filter(Boolean);
+    c.facilities = Array.from(document.querySelectorAll('#facBox .fac')).map(i=>i.value.trim()).filter(Boolean);
+    c.pricing = Array.from(document.querySelectorAll('#priceBox [data-prow],#priceBox .flex')).map(r=>{
+      const s=r.querySelector('.psize')?.value.trim(), p=Number(r.querySelector('.pprice')?.value);
+      return s&&p?{size:s,price:p}:null;
+    }).filter(Boolean);
+    c.addons = Array.from(document.querySelectorAll('#addonBox [data-arow],#addonBox .flex')).map(r=>{
+      const n=r.querySelector('.aname')?.value.trim(), p=Number(r.querySelector('.aprice')?.value);
+      return n&&p?{name:n,price:p}:null;
+    }).filter(Boolean);
+    StorageModule.saveClubs(clubs);
+    UI.closeModal();
+    this.render();
+    SyncModule.syncToClient();
+    UI.toast('码头配置已保存并同步','success');
+  },
+
+  // 启用/停用
+  toggle(id){
+    const clubs = StorageModule.loadClubs();
+    const c = clubs.find(x=>x.id===id);
+    c.active = !c.active;
+    StorageModule.saveClubs(clubs);
+    this.render();
+    SyncModule.syncToClient();
+    UI.toast(`${c.name} 已${c.active?'启用':'停用'}`,'success');
+  },
+
+  // 删除码头
+  remove(id){
+    let clubs = StorageModule.loadClubs();
+    clubs = clubs.filter(c=>c.id!==id);
+    StorageModule.saveClubs(clubs);
+    UI.closeModal();
+    this.render();
+    SyncModule.syncToClient();
+    UI.toast('码头已删除','success');
+  }
+};
+
+/* ============================================================
+   模块八:AIModule 免费AI接口全局配置模块
+============================================================ */
+const AIModule = {
+  render(){
+    const a = StorageModule.loadAI() || DefaultDataModule.aiConfig();
+    const qqs = a.quickQuestions.map((q,i)=>`
+      <div class="flex gap-2 items-center" data-qq="${i}">
+        <input class="input-soft qq" value="${q}"/>
+        <button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>
+      </div>`).join('');
+    document.getElementById('contentArea').innerHTML = `
+      <div class="mb-5">
+        <h2 class="font-serif-display text-2xl font-bold text-deepsea">免费AI接口全局配置</h2>
+        <p class="text-sm text-gray-500 mt-1">配置 OpenAI 兼容协议接口(硅基流动/智谱/Kimi等),全系统AI功能共用,前后端统一读取。</p>
+      </div>
+      <div class="bg-white card-soft p-6 space-y-5">
+        <div class="grid md:grid-cols-2 gap-4">
+          <div><label class="text-sm font-medium text-gray-700">接口地址</label><input id="aUrl" class="input-soft mt-1" value="${a.apiUrl}"/></div>
+          <div><label class="text-sm font-medium text-gray-700">模型名称</label><input id="aModel" class="input-soft mt-1" value="${a.model}"/></div>
+        </div>
+        <div><label class="text-sm font-medium text-gray-700">API密钥</label>
+          <div class="flex gap-2 mt-1">
+            <input id="aKey" type="password" class="input-soft" value="${a.apiKey}" placeholder="sk-..."/>
+            <button onclick="AIModule.toggleKey()" class="btn-gold px-4 rounded-lg text-sm">显示</button>
+          </div>
+        </div>
+        <div><label class="text-sm font-medium text-gray-700">系统角色提示词(注入商家信息+码头数据)</label>
+          <textarea id="aPrompt" rows="5" class="input-soft mt-1">${a.systemPrompt}</textarea>
+        </div>
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <label class="text-sm font-medium text-gray-700">前端快捷问答库</label>
+            <button onclick="AIModule.addQQ()" class="text-sm text-orange">+ 添加问题</button>
+          </div>
+          <div id="qqBox" class="space-y-2">${qqs}</div>
+        </div>
+        <div class="flex items-center gap-3 pt-3 border-t border-gray-100">
+          <button onclick="AIModule.save()" class="btn-primary px-6 py-2.5 rounded-lg font-medium">保存配置</button>
+          <button onclick="AIModule.test()" class="btn-orange px-6 py-2.5 rounded-lg font-medium">测试AI连接</button>
+        </div>
+      </div>`;
+  },
+
+  addQQ(){
+    const box = document.getElementById('qqBox');
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-center';
+    row.innerHTML = `<input class="input-soft qq" placeholder="如:求婚推荐哪个码头?"/><button onclick="this.parentElement.remove()" class="text-red-500 text-sm">删</button>`;
+    box.appendChild(row);
+  },
+
+  toggleKey(){
+    const inp = document.getElementById('aKey');
+    inp.type = inp.type==='password'?'text':'password';
+  },
+
+  save(){
+    const a = {
+      apiUrl: document.getElementById('aUrl').value.trim(),
+      apiKey: document.getElementById('aKey').value.trim(),
+      model: document.getElementById('aModel').value.trim(),
+      systemPrompt: document.getElementById('aPrompt').value.trim(),
+      quickQuestions: Array.from(document.querySelectorAll('#qqBox .qq')).map(i=>i.value.trim()).filter(Boolean)
+    };
+    if(!a.apiUrl){ UI.toast('接口地址必填','error'); return; }
+    StorageModule.saveAI(a);
+    SyncModule.syncToClient();
+    UI.toast('AI配置已保存并同步','success');
+  },
+
+  // 测试AI连接(调用统一请求函数)
+  async test(){
+    const cfg = {
+      apiUrl: document.getElementById('aUrl').value.trim(),
+      apiKey: document.getElementById('aKey').value.trim(),
+      model: document.getElementById('aModel').value.trim(),
+    };
+    if(!cfg.apiKey){ UI.toast('请先填写API密钥','error'); return; }
+    UI.toast('正在测试AI连接...','info');
+    try{
+      const res = await fetch(cfg.apiUrl, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${cfg.apiKey}`},
+        body: JSON.stringify({
+          model: cfg.model,
+          messages:[{role:'user',content:'你好,请回复「南崽出海AI连接成功」'}],
+          max_tokens: 50
+        })
+      });
+      if(!res.ok){
+        if(res.status===401) UI.toast('密钥失效(401),请检查API Key','error');
+        else if(res.status===429) UI.toast('接口限流(429),请稍后再试','error');
+        else UI.toast(`请求失败(${res.status})`,'error');
+        return;
+      }
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content || '无返回内容';
+      UI.modal('AI连接测试成功', `<div class="bg-seagrad p-4 rounded-xl text-sm text-deepsea">${reply}</div>`,
+        `<button onclick="UI.closeModal()" class="btn-primary px-5 py-2 rounded-lg">好的</button>`);
+    }catch(e){
+      UI.toast('网络异常:'+e.message,'error');
+    }
+  }
+};
+
+/* ============================================================
+   模块九:WebhookModule 企业微信机器人配置
+============================================================ */
+const WebhookModule = {
+  render(){
+    const url = StorageModule.loadWebhook() || '';
+    const b = StorageModule.loadBrand() || DefaultDataModule.brand();
+    const tpl = `【南崽出海·新游艇预约通知】
+订单编号：NZC20260702143012AB12
+预约码头：南沙游艇会
+码头地址：广州市南沙区港前大道
+客户姓名：张先生
+联系电话：13800000000
+选定游艇：50英尺
+出海日期&时段：2026-07-15 14:00-17:00
+出行人数：8
+增值配套：航拍跟拍、酒水套餐
+客户出行备注：求婚布置
+商家对接：微信${b.wechat} / 电话${b.phone}
+提交时间：2026-07-02 14:30:12
+请尽快联系客户确认档期！`;
+
+    document.getElementById('contentArea').innerHTML = `
+      <div class="mb-5">
+        <h2 class="font-serif-display text-2xl font-bold text-deepsea">企业微信机器人Webhook</h2>
+        <p class="text-sm text-gray-500 mt-1">配置推送链接,客户预约后自动推送完整订单通知至企业微信群。</p>
+      </div>
+      <div class="bg-white card-soft p-6 space-y-5">
+        <div><label class="text-sm font-medium text-gray-700">Webhook推送链接</label>
+          <input id="whUrl" class="input-soft mt-1" value="${url}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"/>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="WebhookModule.save()" class="btn-primary px-6 py-2.5 rounded-lg font-medium">保存</button>
+          <button onclick="WebhookModule.test()" class="btn-orange px-6 py-2.5 rounded-lg font-medium">发送测试消息</button>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-gray-700 mb-2 block">推送模板预览(变量自动替换)</label>
+          <pre class="bg-seagrad p-4 rounded-xl text-xs text-deepsea whitespace-pre-wrap font-mono leading-relaxed">${tpl}</pre>
+        </div>
+      </div>`;
+  },
+
+  save(){
+    const url = document.getElementById('whUrl').value.trim();
+    StorageModule.saveWebhook(url);
+    SyncModule.syncToClient();
+    UI.toast('Webhook配置已保存','success');
+  },
+
+  // 发送测试消息
+  async test(){
+    const url = document.getElementById('whUrl').value.trim();
+    if(!url){ UI.toast('请先填写Webhook链接','error'); return; }
+    UI.toast('正在发送测试消息...','info');
+    try{
+      const res = await fetch(url, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          msgtype:'text',
+          text:{ content:'【南崽出海】Webhook测试消息:配置成功!客户预约后将自动推送至此群。' }
+        })
+      });
+      if(!res.ok){ UI.toast(`推送失败(${res.status})`,'error'); return; }
+      const data = await res.json();
+      if(data.errcode===0) UI.toast('测试消息已推送至企业微信群','success');
+      else UI.toast('推送失败:'+(data.errmsg||'未知错误'),'error');
+    }catch(e){
+      UI.toast('网络异常:'+e.message,'error');
+    }
+  }
+};
+
+/* ============================================================
+   模块十:ManualModule 前端使用说明书可视化编辑器
+============================================================ */
+const ManualModule = {
+  render(){
+    const list = StorageModule.loadManual() || DefaultDataModule.manual();
+    const chapters = list.map((ch,i)=>`
+      <div class="bg-white card-soft p-4" data-mid="${ch.id}">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-xs px-2 py-0.5 rounded-full bg-gold/20 text-deepsea font-semibold">第${i+1}章</span>
+          <input class="input-soft mtitle flex-1" value="${ch.title}"/>
+          <button onclick="ManualModule.move('${ch.id}',-1)" class="text-xs px-2 py-1 rounded bg-gray-100" ${i===0?'disabled':''}>↑</button>
+          <button onclick="ManualModule.move('${ch.id}',1)" class="text-xs px-2 py-1 rounded bg-gray-100" ${i===list.length-1?'disabled':''}>↓</button>
+          <button onclick="UI.confirm('确认删除此章节?',()=>ManualModule.remove('${ch.id}'))" class="text-xs px-2 py-1 rounded bg-red-100 text-red-600">删</button>
+        </div>
+        <textarea class="input-soft mcontent" rows="4" placeholder="章节内容(支持换行)">${ch.content}</textarea>
+        <div class="flex items-center gap-3 mt-3">
+          ${ch.image?`<img src="${ch.image}" class="w-20 h-14 object-cover rounded border"/>`:`<div class="w-20 h-14 rounded bg-seagrad flex items-center justify-center text-xs text-gray-400">无图</div>`}
+          <label class="btn-orange text-xs px-3 py-1.5 rounded-lg cursor-pointer">
+            ${ch.image?'替换示意图':'上传示意图'}
+            <input type="file" accept="image/*" class="hidden" onchange="ManualModule.uploadImg('${ch.id}',this)"/>
+          </label>
+          ${ch.image?`<button onclick="ManualModule.removeImg('${ch.id}')" class="text-xs text-red-500">移除</button>`:''}
+        </div>
+      </div>`).join('');
+
+    document.getElementById('contentArea').innerHTML = `
+      <div class="mb-5 flex justify-between items-center">
+        <div>
+          <h2 class="font-serif-display text-2xl font-bold text-deepsea">使用说明书编辑器</h2>
+          <p class="text-sm text-gray-500 mt-1">编辑前端内置帮助弹窗的章节内容与示意图,支持增删排序,保存后同步前端。</p>
+        </div>
+        <button onclick="ManualModule.add()" class="btn-orange px-5 py-2.5 rounded-lg font-medium">+ 新增章节</button>
+      </div>
+      <div class="space-y-3">${chapters}</div>
+      <div class="mt-5 flex justify-end">
+        <button onclick="ManualModule.saveAll()" class="btn-primary px-8 py-2.5 rounded-lg font-medium">保存全部并同步</button>
+      </div>`;
+  },
+
+  add(){
+    const list = StorageModule.loadManual();
+    list.push({id:'m_'+Date.now(), title:'新章节', content:'', image:''});
+    StorageModule.saveManual(list);
+    this.render();
+  },
+
+  move(id, dir){
+    const list = StorageModule.loadManual();
+    const i = list.findIndex(c=>c.id===id);
+    const j = i + dir;
+    if(j<0 || j>=list.length) return;
+    [list[i],list[j]] = [list[j],list[i]];
+    StorageModule.saveManual(list);
+    this.render();
+  },
+
+  remove(id){
+    let list = StorageModule.loadManual();
+    list = list.filter(c=>c.id!==id);
+    StorageModule.saveManual(list);
+    this.render();
+    SyncModule.syncToClient();
+    UI.toast('章节已删除','success');
+  },
+
+  async uploadImg(id, input){
+    const f = input.files[0]; if(!f) return;
+    const base64 = await ImageModule.compressImage(f, 1000, 0.8);
+    const list = StorageModule.loadManual();
+    const ch = list.find(c=>c.id===id);
+    ch.image = base64;
+    StorageModule.saveManual(list);
+    ManualModule.render();
+  },
+
+  removeImg(id){
+    const list = StorageModule.loadManual();
+    list.find(c=>c.id===id).image = '';
+    StorageModule.saveManual(list);
+    ManualModule.render();
+  },
+
+  saveAll(){
+    const list = StorageModule.loadManual();
+    document.querySelectorAll('[data-mid]').forEach(el=>{
+      const id = el.dataset.mid;
+      const ch = list.find(c=>c.id===id);
+      if(ch){
+        ch.title = el.querySelector('.mtitle').value.trim() || '未命名章节';
+        ch.content = el.querySelector('.mcontent').value.trim();
+      }
+    });
+    StorageModule.saveManual(list);
+    SyncModule.syncToClient();
+    UI.toast('说明书已保存并同步','success');
+  }
+};
+
+/* ============================================================
+   模块十一:OrderModule 预约订单台账模块
+============================================================ */
+const OrderModule = {
+  // 当前筛选状态
+  filter: {club:'all', status:'all'},
+
+  render(){
+    const clubs = StorageModule.loadClubs();
+    const orders = StorageModule.loadOrders();
+    const f = this.filter;
+    const filtered = orders.filter(o=>{
+      if(f.club!=='all' && o.clubId!==f.club) return false;
+      if(f.status!=='all' && o.status!==f.status) return false;
+      return true;
+    }).sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
+
+    const clubOpts = `<option value="all" ${f.club==='all'?'selected':''}>全部码头</option>` + clubs.map(c=>`<option value="${c.id}" ${f.club===c.id?'selected':''}>${c.name}</option>`).join('');
+    const statusOpts = ['all','pending','done','cancel'].map(s=>`<option value="${s}" ${f.status===s?'selected':''}>${s==='all'?'全部状态':s==='pending'?'待确认':s==='done'?'已成交':'已取消'}</option>`).join('');
+
+    const rows = filtered.length ? filtered.map(o=>{
+      const statusMap = {pending:['badge-pending','待确认'],done:['badge-done','已成交'],cancel:['badge-cancel','已取消']};
+      const [cls,txt] = statusMap[o.status];
+      return `
+      <tr class="border-b border-gray-100 hover:bg-seagrad/40">
+        <td class="px-3 py-3 text-xs font-mono text-deepsea">${o.orderId}</td>
+        <td class="px-3 py-3 text-sm">${o.clubName}</td>
+        <td class="px-3 py-3 text-sm">${o.customerName}<br><span class="text-xs text-gray-500">${o.customerPhone}</span></td>
+        <td class="px-3 py-3 text-sm">${o.boatSize}<br><span class="text-xs text-gray-500">${o.bookingDate} ${o.timeSlot}</span></td>
+        <td class="px-3 py-3 text-sm">${o.pax}人</td>
+        <td class="px-3 py-3"><span class="text-xs px-2 py-1 rounded-full ${cls}">${txt}</span></td>
+        <td class="px-3 py-3 text-xs text-gray-500">${new Date(o.createdAt).toLocaleString('zh-CN')}</td>
+        <td class="px-3 py-3">
+          <button onclick="OrderModule.detail('${o.orderId}')" class="text-xs px-2 py-1 rounded bg-deepsea text-white">详情</button>
+          <select onchange="OrderModule.setStatus('${o.orderId}',this.value)" class="text-xs px-1 py-1 rounded border mt-1">
+            ${['pending','done','cancel'].map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${s==='pending'?'待确认':s==='done'?'已成交':'已取消'}</option>`).join('')}
+          </select>
+        </td>
+      </tr>`}).join('') : `<tr><td colspan="8" class="text-center py-12 text-gray-400">暂无订单数据</td></tr>`;
+
+    const orderCards = filtered.length ? filtered.map(o=>{
+      const statusMap = {pending:['badge-pending','待确认'],done:['badge-done','已成交'],cancel:['badge-cancel','已取消']};
+      const [cls,txt] = statusMap[o.status];
+      return `
+      <div class="bg-white card-soft p-3 mb-3">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-mono text-deepsea">${o.orderId}</span>
+          <span class="text-xs px-2 py-0.5 rounded-full ${cls}">${txt}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-sm mb-2">
+          <div><span class="text-xs text-gray-500">码头</span><br/><span class="text-deepsea">${o.clubName}</span></div>
+          <div><span class="text-xs text-gray-500">客户</span><br/><span>${o.customerName}</span></div>
+          <div><span class="text-xs text-gray-500">船型/人数</span><br/><span>${o.boatSize} · ${o.pax}人</span></div>
+          <div><span class="text-xs text-gray-500">电话</span><br/><span class="text-xs">${o.customerPhone}</span></div>
+        </div>
+        <div class="text-xs text-gray-500 mb-2">${o.bookingDate} ${o.timeSlot}</div>
+        <div class="flex gap-2">
+          <button onclick="OrderModule.detail('${o.orderId}')" class="flex-1 text-xs py-1.5 rounded bg-deepsea text-white">详情</button>
+          <select onchange="OrderModule.setStatus('${o.orderId}',this.value)" class="flex-1 text-xs px-2 py-1 rounded border text-gray-600">
+            ${['pending','done','cancel'].map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${s==='pending'?'待确认':s==='done'?'已成交':'已取消'}</option>`).join('')}
+          </select>
+        </div>
+      </div>`}).join('') : `<div class="text-center py-12 text-gray-400 bg-white card-soft">暂无订单数据</div>`;
+
+    document.getElementById('contentArea').innerHTML = `
+      <div class="mb-4 md:mb-5">
+        <h2 class="font-serif-display text-xl md:text-2xl font-bold text-deepsea">预约订单台账</h2>
+        <p class="text-xs md:text-sm text-gray-500 mt-1">全量订单本地永久存储,共 ${orders.length} 单</p>
+      </div>
+      <div class="bg-white card-soft p-3 md:p-4 mb-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
+        <div class="flex-1"><label class="text-xs text-gray-500">筛选码头</label>
+          <select id="fClub" class="input-soft mt-1 text-sm" onchange="OrderModule.filter.club=this.value;OrderModule.render()">${clubOpts}</select>
+        </div>
+        <div class="flex-1"><label class="text-xs text-gray-500">筛选状态</label>
+          <select id="fStatus" class="input-soft mt-1 text-sm" onchange="OrderModule.filter.status=this.value;OrderModule.render()">${statusOpts}</select>
+        </div>
+        <button onclick="OrderModule.exportJson()" class="btn-gold px-4 py-2 rounded-lg text-xs sm:text-sm sm:ml-auto self-end">导出备份</button>
+      </div>
+      <div class="hidden md:block bg-white card-soft overflow-x-auto">
+        <table class="w-full text-left">
+          <thead class="bg-seagrad text-xs text-deepsea uppercase">
+            <tr>
+              <th class="px-3 py-3">订单编号</th><th class="px-3 py-3">码头</th>
+              <th class="px-3 py-3">客户</th><th class="px-3 py-3">船型/时段</th>
+              <th class="px-3 py-3">人数</th><th class="px-3 py-3">状态</th>
+              <th class="px-3 py-3">提交时间</th><th class="px-3 py-3">操作</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="md:hidden">${orderCards}</div>`;
+  },
+
+  // 详情弹窗
+  detail(orderId){
+    const o = StorageModule.loadOrders().find(x=>x.orderId===orderId);
+    if(!o) return;
+    const b = StorageModule.loadBrand();
+    UI.modal(`订单详情 · ${o.orderId}`, `
+      <div class="space-y-2 text-sm">
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">码头</span><span class="col-span-2">${o.clubName}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">地址</span><span class="col-span-2">${o.clubAddress}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">客户</span><span class="col-span-2">${o.customerName}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">电话</span><span class="col-span-2">${o.customerPhone}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">船型</span><span class="col-span-2">${o.boatSize}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">日期时段</span><span class="col-span-2">${o.bookingDate} ${o.timeSlot}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">人数</span><span class="col-span-2">${o.pax}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">增值配套</span><span class="col-span-2">${(o.addons||[]).join('、')||'无'}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">备注</span><span class="col-span-2">${o.remark||'无'}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">商家对接</span><span class="col-span-2">微信${b.wechat} / 电话${b.phone}</span></div>
+        <div class="grid grid-cols-3 gap-2"><span class="text-gray-500">提交时间</span><span class="col-span-2">${new Date(o.createdAt).toLocaleString('zh-CN')}</span></div>
+      </div>`,
+      `<button onclick="UI.closeModal()" class="btn-primary px-5 py-2 rounded-lg">关闭</button>`);
+  },
+
+  setStatus(orderId, status){
+    const orders = StorageModule.loadOrders();
+    const o = orders.find(x=>x.orderId===orderId);
+    if(o){ o.status = status; StorageModule.saveOrders(orders); }
+    this.render();
+    UI.toast('订单状态已更新','success');
+  },
+
+  // 导出JSON备份
+  exportJson(){
+    const orders = StorageModule.loadOrders();
+    const blob = new Blob([JSON.stringify(orders,null,2)],{type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `南崽出海_订单备份_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    UI.toast('订单备份已导出','success');
+  }
+};
+
+/* ============================================================
+   模块十二:ResetModule 系统重置模块
+============================================================ */
+const ResetModule = {
+  render(){
+    const orders = StorageModule.loadOrders();
+    const clubs = StorageModule.loadClubs();
+    const imgCount = clubs.reduce((s,c)=>s+c.images.length,0);
+    document.getElementById('contentArea').innerHTML = `
+      <div class="mb-5">
+        <h2 class="font-serif-display text-2xl font-bold text-deepsea">系统重置</h2>
+        <p class="text-sm text-gray-500 mt-1">一键清空全部本地配置、订单、图片素材数据,谨慎操作。</p>
+      </div>
+      <div class="bg-white card-soft p-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="bg-seagrad p-4 rounded-xl text-center"><div class="text-2xl font-bold text-deepsea">${clubs.length}</div><div class="text-xs text-gray-500 mt-1">俱乐部数量</div></div>
+          <div class="bg-seagrad p-4 rounded-xl text-center"><div class="text-2xl font-bold text-deepsea">${imgCount}</div><div class="text-xs text-gray-500 mt-1">图片素材</div></div>
+          <div class="bg-seagrad p-4 rounded-xl text-center"><div class="text-2xl font-bold text-deepsea">${orders.length}</div><div class="text-xs text-gray-500 mt-1">订单数量</div></div>
+          <div class="bg-seagrad p-4 rounded-xl text-center"><div class="text-2xl font-bold text-deepsea">v${StorageModule.getVersion()}</div><div class="text-xs text-gray-500 mt-1">数据版本</div></div>
+        </div>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-4 border border-gray-200 rounded-xl">
+            <div><div class="font-medium text-deepsea">仅清空订单数据</div><div class="text-xs text-gray-500">保留品牌、俱乐部、图片、AI配置</div></div>
+            <button onclick="UI.confirm('确认清空全部订单?此操作不可恢复',()=>ResetModule.resetOrders())" class="btn-orange px-4 py-2 rounded-lg text-sm">清空订单</button>
+          </div>
+          <div class="flex items-center justify-between p-4 border border-gray-200 rounded-xl">
+            <div><div class="font-medium text-deepsea">重置俱乐部为默认数据</div><div class="text-xs text-gray-500">恢复五大码头默认配置,清除自定义图片</div></div>
+            <button onclick="UI.confirm('确认重置俱乐部数据?自定义图片将丢失',()=>ResetModule.resetClubs())" class="btn-orange px-4 py-2 rounded-lg text-sm">重置俱乐部</button>
+          </div>
+          <div class="flex items-center justify-between p-4 border-2 border-red-200 bg-red-50/40 rounded-xl">
+            <div><div class="font-medium text-red-600">一键清空全部数据</div><div class="text-xs text-gray-500">品牌、俱乐部、图片、AI、Webhook、说明书、订单全部清除</div></div>
+            <button onclick="ResetModule.confirmAll()" class="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium">全部清空</button>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  resetOrders(){
+    StorageModule.saveOrders([]);
+    this.render();
+    UI.toast('订单数据已清空','success');
+  },
+
+  resetClubs(){
+    StorageModule.saveClubs(DefaultDataModule.clubs());
+    SyncModule.syncToClient();
+    this.render();
+    UI.toast('俱乐部已重置为默认数据','success');
+  },
+
+  confirmAll(){
+    UI.modal('最终确认 · 全部清空', `
+      <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+        <p class="font-bold mb-2">⚠ 危险操作</p>
+        <p>将清空以下全部数据,且不可恢复:</p>
+        <ul class="list-disc pl-5 mt-2 space-y-1">
+          <li>品牌商家配置(含微信DaogoG、电话13003192344)</li>
+          <li>五大俱乐部完整数据(含全部图片素材)</li>
+          <li>AI接口参数与角色提示词</li>
+          <li>企业微信Webhook链接</li>
+          <li>前端使用说明书图文</li>
+          <li>全部预约订单台账</li>
+        </ul>
+        <p class="mt-3">清空后系统将自动恢复内置默认配置。</p>
+      </div>
+      <div class="mt-4">
+        <input id="resetConfirm" class="input-soft" placeholder="请输入「我确认清空」以继续"/>
+      </div>`,
+      `<button onclick="UI.closeModal()" class="px-5 py-2 rounded-lg border border-gray-300">取消</button>
+       <button onclick="ResetModule.doAll()" class="bg-red-500 text-white px-5 py-2 rounded-lg font-medium">确认清空</button>`);
+  },
+
+  doAll(){
+    const txt = document.getElementById('resetConfirm').value.trim();
+    if(txt!=='我确认清空'){ UI.toast('请输入正确的确认文字','error'); return; }
+    Object.values(StorageModule.KEYS).forEach(k=>StorageModule.remove(k));
+    DefaultDataModule.initAll();
+    UI.closeModal();
+    document.getElementById('versionTag').textContent = `数据版本 v${StorageModule.getVersion()}`;
+    this.render();
+    UI.toast('全部数据已清空并恢复默认','success');
+  }
+};
+
+/* ============================================================
+   初始化:渲染侧边导航 + 默认数据 + 进入首个模块
+============================================================ */
+const NAV_ITEMS = [
+  {key:'brand', label:'品牌配置', icon:'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'},
+  {key:'clubs', label:'俱乐部管理', icon:'M3 7l9-4 9 4M3 7v10l9 4 9-4V7M3 7l9 4 9-4M12 11v10'},
+  {key:'images', label:'图片素材', icon:'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'},
+  {key:'ai', label:'AI接口配置', icon:'M13 10V3L4 14h7v7l9-11h-7z'},
+  {key:'webhook', label:'微信推送', icon:'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'},
+  {key:'manual', label:'说明书编辑', icon:'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253'},
+  {key:'orders', label:'订单台账', icon:'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'},
+  {key:'reset', label:'系统重置', icon:'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'}
+];
+
+function initApp(){
+  // 初始化默认数据
+  DefaultDataModule.initAll();
+  // 渲染侧边导航
+  document.getElementById('navList').innerHTML = NAV_ITEMS.map(it=>`
+    <button data-key="${it.key}" onclick="UI.switchTab('${it.key}')" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-gray-600 hover:bg-seagrad/60 transition text-left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${it.icon}"/></svg>
+      ${it.label}
+    </button>`).join('');
+  // 版本号
+  document.getElementById('versionTag').textContent = `数据版本 v${StorageModule.getVersion()}`;
+  // 进入品牌配置
+  UI.switchTab('brand');
+}
+
+// 启动
+initApp();
+</script>
+</body>
+</html>
