@@ -1045,6 +1045,27 @@ const AIModule = {
         <p class="text-sm text-gray-500 mt-1">配置 OpenAI 兼容协议接口(硅基流动/智谱/Kimi等),全系统AI功能共用,前后端统一读取。</p>
       </div>
       <div class="bg-white card-soft p-6 space-y-5">
+        <div>
+          <label class="text-sm font-medium text-gray-700 mb-2 block">快速切换平台</label>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <button onclick="AIModule.switchPlatform('siliconflow')" class="text-xs py-2 px-3 rounded-lg border border-gray-200 hover:border-gold hover:bg-gold/10 transition">
+              <div class="font-medium text-deepsea">硅基流动</div>
+              <div class="text-gray-400 text-xs mt-0.5">免费额度多</div>
+            </button>
+            <button onclick="AIModule.switchPlatform('zhipu')" class="text-xs py-2 px-3 rounded-lg border border-gray-200 hover:border-gold hover:bg-gold/10 transition">
+              <div class="font-medium text-deepsea">智谱AI</div>
+              <div class="text-gray-400 text-xs mt-0.5">glm-4-flash</div>
+            </button>
+            <button onclick="AIModule.switchPlatform('kimi')" class="text-xs py-2 px-3 rounded-lg border border-gray-200 hover:border-gold hover:bg-gold/10 transition">
+              <div class="font-medium text-deepsea">Kimi</div>
+              <div class="text-gray-400 text-xs mt-0.5">Moonshot</div>
+            </button>
+            <button onclick="AIModule.switchPlatform('deepseek')" class="text-xs py-2 px-3 rounded-lg border border-gray-200 hover:border-gold hover:bg-gold/10 transition">
+              <div class="font-medium text-deepsea">DeepSeek</div>
+              <div class="text-gray-400 text-xs mt-0.5">深度求索</div>
+            </button>
+          </div>
+        </div>
         <div class="grid md:grid-cols-2 gap-4">
           <div><label class="text-sm font-medium text-gray-700">接口地址</label><input id="aUrl" class="input-soft mt-1" value="${a.apiUrl}"/></div>
           <div><label class="text-sm font-medium text-gray-700">模型名称</label><input id="aModel" class="input-soft mt-1" value="${a.model}"/></div>
@@ -1083,6 +1104,36 @@ const AIModule = {
   toggleKey(){
     const inp = document.getElementById('aKey');
     inp.type = inp.type==='password'?'text':'password';
+  },
+
+  switchPlatform(platform){
+    const platforms = {
+      siliconflow: {
+        url: 'https://api.siliconflow.cn/v1/chat/completions',
+        model: 'Qwen/Qwen2.5-7B-Instruct',
+        tip: '硅基流动 - 注册送免费额度'
+      },
+      zhipu: {
+        url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+        model: 'glm-4-flash',
+        tip: '智谱AI - glm-4-flash免费'
+      },
+      kimi: {
+        url: 'https://api.moonshot.cn/v1/chat/completions',
+        model: 'moonshot-v1-8k',
+        tip: 'Kimi - 月之暗面'
+      },
+      deepseek: {
+        url: 'https://api.deepseek.com/v1/chat/completions',
+        model: 'deepseek-chat',
+        tip: 'DeepSeek - 深度求索'
+      }
+    };
+    const p = platforms[platform];
+    if(!p) return;
+    document.getElementById('aUrl').value = p.url;
+    document.getElementById('aModel').value = p.model;
+    UI.toast('已切换到'+p.tip,'success');
   },
 
   save(){
