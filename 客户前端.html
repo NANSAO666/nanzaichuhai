@@ -988,16 +988,41 @@ const ManualModule = {
 ============================================================ */
 function initApp(){
   // 从URL参数导入推送配置(用于跨设备同步)
+  // 支持 ?t=xxx (PushPlus短模式) 和 ?w=xxx (企业微信base64模式) 和 #push=xxx (旧模式兼容)
+  const urlParams = new URLSearchParams(window.location.search);
+  const t = urlParams.get('t');
+  const w = urlParams.get('w');
   const hash = window.location.hash;
-  if(hash && hash.indexOf('#push=')===0){
+
+  let imported = false;
+  if(t){
+    // PushPlus短模式: ?t=token
+    localStorage.setItem('nzch_webhook', JSON.stringify({type:'pushplus', token:t}));
+    imported = true;
+  }else if(w){
+    // 企业微信模式: ?w=base64
+    try{
+      const cfg = JSON.parse(decodeURIComponent(escape(atob(w))));
+      if(cfg && (cfg.token || cfg.url)){
+        localStorage.setItem('nzch_webhook', JSON.stringify(cfg));
+        imported = true;
+      }
+    }catch(e){ console.warn('推送配置导入失败',e); }
+  }else if(hash && hash.indexOf('#push=')===0){
+    // 旧hash模式兼容
     try{
       const encoded = hash.replace('#push=','');
       const cfg = JSON.parse(decodeURIComponent(escape(atob(encoded))));
       if(cfg && (cfg.token || cfg.url)){
         localStorage.setItem('nzch_webhook', JSON.stringify(cfg));
+        imported = true;
       }
-      history.replaceState(null, '', window.location.pathname);
     }catch(e){ console.warn('推送配置导入失败',e); }
+  }
+
+  if(imported){
+    // 清理URL参数,保持地址栏干净
+    history.replaceState(null, '', window.location.pathname);
   }
 
   // 首次打开若后台未初始化,前端兜底加载默认数据(离线可用)

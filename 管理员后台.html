@@ -1227,12 +1227,12 @@ const PushModule = {
         </div>
 
         <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div class="text-sm font-medium text-blue-800 mb-2">📱 手机端配置同步</div>
-          <p class="text-xs text-blue-700 mb-3">如果手机端和电脑端不是同一个浏览器,点下方按钮生成带配置的链接,用手机打开一次即可自动同步推送配置。</p>
-          <button onclick="PushModule.genLink()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">生成专属同步链接</button>
+          <div class="text-sm font-medium text-blue-800 mb-2">📱 生成带推送的客户链接</div>
+          <p class="text-xs text-blue-700 mb-3">把生成的链接发给客户,客户打开后预约,你微信就能自动收到通知。跨设备通用,手机电脑都可以。</p>
+          <button onclick="PushModule.genLink()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">生成客户专属链接</button>
           <div id="linkBox" class="hidden mt-3">
             <div class="bg-white rounded-lg p-3 border border-blue-200">
-              <div class="text-xs text-gray-500 mb-1">前端链接(用手机浏览器打开一次即可):</div>
+              <div class="text-xs text-gray-500 mb-1">客户前端链接(直接发给客户):</div>
               <div id="linkText" class="text-xs text-deepsea break-all font-mono bg-seagrad/50 p-2 rounded"></div>
             </div>
             <button onclick="PushModule.copyLink()" class="mt-2 text-xs text-blue-600 underline">复制链接</button>
@@ -1252,12 +1252,32 @@ const PushModule = {
       UI.toast('请先配置好推送信息并保存','error');
       return;
     }
-    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
-    const baseUrl = window.location.href.replace('管理员后台','客户前端').split('#')[0].split('?')[0];
-    const link = baseUrl + '#push=' + encoded;
+    // 生成客户前端链接,使用查询参数缩短长度
+    // 自动检测当前页面路径,替换管理员后台为客户前端
+    let baseUrl = window.location.origin + window.location.pathname;
+    // 处理中文文件名的URL编码和普通名称
+    baseUrl = baseUrl.replace(/%E7%AE%A1%E7%90%86%E5%91%98%E5%90%8E%E5%8F%B0\.html/i, '%E5%AE%A2%E6%88%B7%E5%89%8D%E7%AB%AF.html');
+    baseUrl = baseUrl.replace(/管理员后台\.html/i, '客户前端.html');
+    // 如果没替换成功(可能在本地或路径不同),用GitHub Pages地址兜底
+    if(baseUrl.indexOf('管理员')>-1 || baseUrl.indexOf('admin')>-1 || baseUrl === window.location.origin + window.location.pathname){
+      // 尝试从已知路径推断
+      const path = window.location.pathname;
+      const dir = path.substring(0, path.lastIndexOf('/')+1);
+      baseUrl = window.location.origin + dir + '客户前端.html';
+    }
+
+    let link;
+    if(cfg.type==='pushplus' && cfg.token){
+      link = baseUrl + '?t=' + encodeURIComponent(cfg.token);
+    }else{
+      // 企业微信模式内容较长,用base64
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
+      link = baseUrl + '?w=' + encoded;
+    }
+
     document.getElementById('linkText').textContent = link;
     document.getElementById('linkBox').classList.remove('hidden');
-    UI.toast('链接已生成,复制后用手机浏览器打开','success');
+    UI.toast('链接已生成,复制发给客户即可','success');
   },
 
   copyLink(){
