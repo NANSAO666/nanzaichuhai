@@ -308,6 +308,152 @@ const StorageModule = {
 };
 
 /* ============================================================
+   模块二:ServerModule 服务器通信层
+   统一管理与后端API的通信,自动检测后端是否可用
+============================================================ */
+const ServerModule = {
+  baseUrl: '',
+  available: false,
+
+  async init(){
+    try{
+      const res = await fetch('/api/config');
+      if(res.ok){
+        const data = await res.json();
+        this.available = true;
+        if(data.brand) StorageModule.saveBrand(data.brand);
+        if(data.clubs) StorageModule.saveClubs(data.clubs);
+        if(data.ai) {
+          const localAi = StorageModule.loadAI() || {};
+          StorageModule.saveAI({ ...data.ai, apiKey: localAi.apiKey || data.ai.apiKey || '' });
+        }
+        if(data.manual) StorageModule.saveManual(data.manual);
+        if(data.webhook) {
+          const localWh = StorageModule.loadWebhook() || {};
+          StorageModule.saveWebhook({ ...localWh, ...data.webhook });
+        }
+        console.log('[Server] 后端服务已连接,配置已同步');
+        return true;
+      }
+    }catch(e){
+      console.log('[Server] 无后端服务,使用本地模式');
+    }
+    this.available = false;
+    return false;
+  },
+
+  async save(endpoint, data){
+    if(!this.available) return true;
+    try{
+      const res = await fetch(`/api/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const result = await res.json();
+      return result.success !== false;
+    }catch(e){
+      console.warn('[Server] 保存失败', endpoint, e);
+      return false;
+    }
+  },
+
+  async saveBrand(b){ return this.save('brand', b); },
+  async saveClubs(c){ return this.save('clubs', c); },
+  async saveAI(a){ return this.save('ai', a); },
+  async saveWebhook(w){ return this.save('webhook', w); },
+  async saveManual(m){ return this.save('manual', m); },
+
+  async loadOrders(){
+    if(!this.available) return StorageModule.loadOrders();
+    try{
+      const res = await fetch('/api/orders');
+      const data = await res.json();
+      StorageModule.saveOrders(data);
+      return data;
+    }catch(e){
+      return StorageModule.loadOrders();
+    }
+  },
+
+  async createOrder(order){
+    if(!this.available) {
+      const orders = StorageModule.loadOrders() || [];
+      orders.push(order);
+      StorageModule.saveOrders(orders);
+      return { success: true, orderId: order.orderId };
+    }
+    try{
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order)
+      });
+      return await res.json();
+    }catch(e){
+      return { success: false, error: e.message };
+    }
+  },
+
+  async updateOrderStatus(orderId, status){
+    if(!this.available) {
+      const orders = StorageModule.loadOrders() || [];
+      const order = orders.find(o => o.orderId === orderId);
+      if(order){ order.status = status; StorageModule.saveOrders(orders); }
+      return { success: true };
+    }
+    try{
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      return await res.json();
+    }catch(e){
+      return { success: false, error: e.message };
+    }
+  },
+
+  async pushTest(){
+    if(!this.available) return { success: false, error: '无后端服务' };
+    try{
+      const res = await fetch('/api/push/test', { method: 'POST' });
+      return await res.json();
+    }catch(e){
+      return { success: false, error: e.message };
+    }
+  },
+
+  async pushOrder(order){
+    if(!this.available) return { success: false };
+    try{
+      const res = await fetch('/api/push/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order)
+      });
+      return await res.json();
+    }catch(e){
+      return { success: false, error: e.message };
+    }
+  },
+
+  async aiChat(messages){
+    if(!this.available) return { success: false, error: '无后端服务' };
+    try{
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages })
+      });
+      return await res.json();
+    }catch(e){
+      return { success: false, error: e.message };
+    }
+  },
+};
+
+/* ============================================================
    模块二:DefaultDataModule 默认数据初始化
    内置五大广州游艇俱乐部 + 品牌配置 + AI配置 + 说明书
 ============================================================ */
@@ -571,12 +717,41 @@ const UI = {
    模块四:SyncModule 全局参数同步模块
    后台保存后刷新版本号,前端校验版本自动拉取
    支持导出全部配置为URL参数,跨设备同步
+   支持 BroadcastChannel 同域双页面实时同步
 ============================================================ */
 const SyncModule = {
+  _channel: null,
+
+  init(){
+    try{
+      this._channel = new BroadcastChannel('nzch_sync');
+      this._channel.onmessage = (e) => {
+        if(e.data && e.data.type === 'order_new'){
+          console.log('[Sync] 收到新订单通知', e.data.orderId);
+          if(OrderModule && typeof OrderModule.render === 'function'){
+            OrderModule.render();
+          }
+          UI.toast('📢 收到新的预约订单!','success');
+        }
+      };
+    }catch(e){
+      console.log('[Sync] BroadcastChannel 不可用', e);
+    }
+  },
+
+  broadcast(type, data){
+    try{
+      if(this._channel){
+        this._channel.postMessage({ type, data, from: 'admin' });
+      }
+    }catch(e){}
+  },
+
   // 后台保存后调用,刷新版本号并提示
   syncToClient(){
     const v = StorageModule.bumpVersion();
     document.getElementById('versionTag').textContent = `数据版本 v${v}`;
+    this.broadcast('config_update', { version: v });
     UI.toast('已同步至客户前端,客户刷新即可看到最新数据','success');
   },
 
@@ -694,6 +869,7 @@ const ImageModule = {
         base64, category, cover: isFirst
       });
       StorageModule.saveClubs(clubs);
+      if(ServerModule.available) await ServerModule.saveClubs(clubs);
       return true;
     }catch(e){
       UI.toast('图片上传失败:'+e.message,'error');
@@ -711,6 +887,7 @@ const ImageModule = {
     // 若删除的是封面,自动将首张设为封面
     if(wasCover && club.images.length>0) club.images[0].cover = true;
     StorageModule.saveClubs(clubs);
+    if(ServerModule.available) ServerModule.saveClubs(clubs);
   },
 
   // 设为封面
@@ -720,6 +897,7 @@ const ImageModule = {
     if(!club) return;
     club.images.forEach(i=> i.cover = (i.id===imgId));
     StorageModule.saveClubs(clubs);
+    if(ServerModule.available) ServerModule.saveClubs(clubs);
   },
 
   // ===== 渲染:图片素材管理面板 =====
@@ -869,7 +1047,7 @@ const BrandModule = {
     BrandModule.render();
   },
 
-  save(){
+  async save(){
     const b = {
       brandName: document.getElementById('bName').value.trim(),
       slogan: document.getElementById('bSlogan').value.trim(),
@@ -884,7 +1062,12 @@ const BrandModule = {
     if(!b.brandName || !b.wechat || !b.phone){ UI.toast('品牌名、微信、电话必填','error'); return; }
     StorageModule.saveBrand(b);
     SyncModule.syncToClient();
-    UI.toast('品牌配置已保存并同步','success');
+    if(ServerModule.available){
+      await ServerModule.saveBrand(b);
+      UI.toast('品牌配置已保存并同步到服务器','success');
+    }else{
+      UI.toast('品牌配置已保存','success');
+    }
   }
 };
 
@@ -941,6 +1124,7 @@ const ClubModule = {
     const clubs = StorageModule.loadClubs();
     clubs.push(newClub);
     StorageModule.saveClubs(clubs);
+    if(ServerModule.available) ServerModule.saveClubs(clubs);
     this.edit(newClub.id);
   },
 
@@ -1046,7 +1230,7 @@ const ClubModule = {
   },
 
   // 保存编辑
-  save(id){
+  async save(id){
     const clubs = StorageModule.loadClubs();
     const c = clubs.find(x=>x.id===id);
     if(!c){ UI.closeModal(); return; }
@@ -1069,31 +1253,34 @@ const ClubModule = {
       return n&&p?{name:n,price:p}:null;
     }).filter(Boolean);
     StorageModule.saveClubs(clubs);
+    SyncModule.syncToClient();
+    if(ServerModule.available) await ServerModule.saveClubs(clubs);
     UI.closeModal();
     this.render();
-    SyncModule.syncToClient();
-    UI.toast('码头配置已保存并同步','success');
+    UI.toast('码头配置已保存'+(ServerModule.available?'并同步到服务器':''),'success');
   },
 
   // 启用/停用
-  toggle(id){
+  async toggle(id){
     const clubs = StorageModule.loadClubs();
     const c = clubs.find(x=>x.id===id);
     c.active = !c.active;
     StorageModule.saveClubs(clubs);
-    this.render();
     SyncModule.syncToClient();
+    if(ServerModule.available) await ServerModule.saveClubs(clubs);
+    this.render();
     UI.toast(`${c.name} 已${c.active?'启用':'停用'}`,'success');
   },
 
   // 删除码头
-  remove(id){
+  async remove(id){
     let clubs = StorageModule.loadClubs();
     clubs = clubs.filter(c=>c.id!==id);
     StorageModule.saveClubs(clubs);
+    SyncModule.syncToClient();
+    if(ServerModule.available) await ServerModule.saveClubs(clubs);
     UI.closeModal();
     this.render();
-    SyncModule.syncToClient();
     UI.toast('码头已删除','success');
   }
 };
@@ -1206,7 +1393,7 @@ const AIModule = {
     UI.toast('已切换到'+p.tip,'success');
   },
 
-  save(){
+  async save(){
     const a = {
       apiUrl: document.getElementById('aUrl').value.trim(),
       apiKey: document.getElementById('aKey').value.trim(),
@@ -1217,7 +1404,8 @@ const AIModule = {
     if(!a.apiUrl){ UI.toast('接口地址必填','error'); return; }
     StorageModule.saveAI(a);
     SyncModule.syncToClient();
-    UI.toast('AI配置已保存并同步','success');
+    if(ServerModule.available) await ServerModule.saveAI(a);
+    UI.toast('AI配置已保存'+(ServerModule.available?'并同步到服务器':''),'success');
   },
 
   // 测试AI连接(调用统一请求函数)
@@ -1342,9 +1530,10 @@ const PushModule = {
           </ol>
         </div>`}
 
-        <div class="flex gap-3">
+        <div class="flex gap-3 flex-wrap">
           <button onclick="PushModule.save()" class="btn-primary px-6 py-2.5 rounded-lg font-medium">保存</button>
           <button onclick="PushModule.test()" class="btn-orange px-6 py-2.5 rounded-lg font-medium">发送测试消息</button>
+          <button onclick="PushModule.diagnoseAndShow()" class="btn-gold px-6 py-2.5 rounded-lg font-medium">🔍 推送检测</button>
         </div>
 
         <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
@@ -1365,6 +1554,33 @@ const PushModule = {
           <pre class="bg-seagrad p-4 rounded-xl text-xs text-deepsea whitespace-pre-wrap font-mono leading-relaxed">${tpl}</pre>
         </div>
       </div>`;
+  },
+
+  // 显示诊断结果弹窗
+  async diagnoseAndShow(){
+    UI.toast('正在检测推送配置...','info');
+    const results = await this.diagnose();
+    const allOk = results.every(r=>r.ok);
+    const html = `
+      <div class="space-y-3">
+        ${results.map(r=>`
+          <div class="flex items-start gap-3 p-3 rounded-lg ${r.ok?'bg-green-50 border border-green-200':'bg-red-50 border border-red-200'}">
+            <span class="text-xl">${r.ok?'✓':'✕'}</span>
+            <div class="flex-1">
+              <div class="font-medium text-sm ${r.ok?'text-green-800':'text-red-800'}">${r.name}</div>
+              <div class="text-xs ${r.ok?'text-green-600':'text-red-600'} mt-0.5">${r.value}</div>
+            </div>
+          </div>
+        `).join('')}
+        <div class="mt-4 p-3 bg-seagrad rounded-lg">
+          <div class="text-sm font-medium text-deepsea mb-2">📋 检测总结</div>
+          <div class="text-xs text-gray-600">
+            ${allOk ? '✅ 推送配置检测全部通过，可以正常使用！' : '⚠️ 部分项目未通过，请根据上方提示修正后重试。'}
+          </div>
+        </div>
+      </div>`;
+    UI.modal('推送配置检测', html,
+      `<button onclick="UI.closeModal()" class="btn-primary px-5 py-2 rounded-lg">好的</button>`);
   },
 
   genLink(){
@@ -1415,10 +1631,11 @@ const PushModule = {
     const cfg = StorageModule.loadWebhook() || {type:'pushplus', token:'', url:'', useProxy:false};
     cfg.type = type;
     StorageModule.saveWebhook(cfg);
+    if(ServerModule.available) ServerModule.saveWebhook(cfg);
     this.render();
   },
 
-  save(){
+  async save(){
     const cfg = StorageModule.loadWebhook() || {type:'pushplus', token:'', url:'', useProxy:false};
     const type = cfg.type || 'pushplus';
     if(type==='pushplus'){
@@ -1439,6 +1656,7 @@ const PushModule = {
     cfg.type = type;
     StorageModule.saveWebhook(cfg);
     SyncModule.syncToClient();
+    if(ServerModule.available) await ServerModule.saveWebhook(cfg);
     UI.toast('推送配置已保存 ✓','success');
   },
 
@@ -1446,6 +1664,22 @@ const PushModule = {
     const cfg = StorageModule.loadWebhook() || {type:'pushplus', token:'', url:'', useProxy:false};
     const type = cfg.type || 'pushplus';
     UI.toast('正在发送测试消息...','info');
+    
+    if(ServerModule.available){
+      try{
+        const res = await ServerModule.pushTest();
+        if(res.success){
+          UI.toast('测试消息发送成功 ✓','success');
+        }else{
+          UI.toast('推送失败:'+(res.error||'未知错误'),'error');
+        }
+        return;
+      }catch(e){
+        UI.toast('推送失败:'+e.message,'error');
+        return;
+      }
+    }
+    
     try{
       const title = '【南崽出海】测试消息';
       const content = '🎉 配置成功!客户预约后将自动推送订单通知至此微信。';
@@ -1505,7 +1739,7 @@ const PushModule = {
     const b = StorageModule.loadBrand() || DefaultDataModule.brand();
     const type = cfg.type || 'pushplus';
     if(!cfg.token && !cfg.url){
-      UI.toast('未配置推送信息','error');
+      console.warn('[Push] 未配置推送信息');
       return false;
     }
 
@@ -1524,50 +1758,129 @@ const PushModule = {
 提交时间：${new Date(order.createdAt).toLocaleString('zh-CN')}
 请尽快联系客户确认档期！`;
 
-    try{
-      let ok = false;
-      if(type==='pushplus'){
-        if(!cfg.token){ UI.toast('请先配置PushPlus Token','error'); return false; }
+    const title = order.status === 'pending' ? '【南崽出海】新游艇预约通知' : '【南崽出海】预约已确认通知';
+
+    // 最多重试3次
+    const maxRetries = 3;
+    let lastError = '';
+
+    for(let attempt=1; attempt<=maxRetries; attempt++){
+      try{
+        let ok = false;
+        if(type==='pushplus'){
+          if(!cfg.token) return false;
+          // 备用域名
+          const domains = ['https://www.pushplus.plus/send', 'https://pushplus.plus/send', 'https://pushplus.hxtrip.com/send'];
+          const domain = domains[(attempt-1) % domains.length];
+          const res = await fetch(domain, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+              token: cfg.token,
+              title: title,
+              content: content,
+              template: 'txt'
+            })
+          });
+          const data = await res.json();
+          if(data.code===200) ok = true;
+          else lastError = data.msg || `错误码${data.code}`;
+        }else{
+          if(!cfg.url) return false;
+          const body = JSON.stringify({ msgtype:'text', text:{ content: content } });
+          let res;
+          if(cfg.useProxy){
+            // 多个代理备用
+            const proxies = [
+              'https://api.allorigins.win/post?url=',
+              'https://corsproxy.io/?'
+            ];
+            const proxy = proxies[(attempt-1) % proxies.length];
+            res = await fetch(proxy + encodeURIComponent(cfg.url), {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body
+            });
+            const data = await res.json();
+            const result = data.contents ? JSON.parse(data.contents) : data;
+            if(result.errcode===0) ok = true;
+            else lastError = result.errmsg || '推送失败';
+          }else{
+            res = await fetch(cfg.url, {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body
+            });
+            const data = await res.json();
+            if(data.errcode===0) ok = true;
+            else lastError = data.errmsg || '推送失败';
+          }
+        }
+        if(ok){
+          console.log(`[Push] 第${attempt}次推送成功`);
+          return true;
+        }
+      }catch(e){
+        lastError = e.message;
+        console.warn(`[Push] 第${attempt}次推送失败:`, e);
+      }
+      // 重试间隔
+      if(attempt < maxRetries){
+        await new Promise(r => setTimeout(r, attempt * 1000));
+      }
+    }
+    console.error('[Push] 推送全部失败,最后错误:', lastError);
+    return false;
+  },
+
+  // 诊断推送配置
+  async diagnose(){
+    const cfg = StorageModule.loadWebhook() || {};
+    const type = cfg.type || 'pushplus';
+    const results = [];
+
+    results.push({name:'推送方式', value: type==='pushplus'?'PushPlus':'企业微信', ok:true});
+
+    if(type==='pushplus'){
+      if(!cfg.token){
+        results.push({name:'Token配置', value:'未配置', ok:false});
+        return results;
+      }
+      results.push({name:'Token长度', value:cfg.token.length+'字符', ok: cfg.token.length > 20});
+      // 测试连通性
+      try{
         const res = await fetch('https://www.pushplus.plus/send', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({
             token: cfg.token,
-            title: '【南崽出海】新游艇预约通知',
-            content: content,
+            title: '【南崽出海】连通性测试',
+            content: '这是一条测试消息，用于检测PushPlus连通性。',
             template: 'txt'
           })
         });
         const data = await res.json();
-        if(data.code===200) ok = true;
-      }else{
-        if(!cfg.url){ UI.toast('请先配置Webhook地址','error'); return false; }
-        const body = JSON.stringify({ msgtype:'text', text:{ content: content } });
-        let res;
-        if(cfg.useProxy){
-          res = await fetch('https://api.allorigins.win/post?url=' + encodeURIComponent(cfg.url), {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body
-          });
-          const data = await res.json();
-          const result = data.contents ? JSON.parse(data.contents) : data;
-          if(result.errcode===0) ok = true;
-        }else{
-          res = await fetch(cfg.url, {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body
-          });
-          const data = await res.json();
-          if(data.errcode===0) ok = true;
+        results.push({name:'API连通', value: data.code===200?'成功':'失败', ok: data.code===200});
+        if(data.code!==200){
+          results.push({name:'错误信息', value: data.msg || '未知错误', ok:false});
+          if(data.code===401 || data.msg?.includes('token')){
+            results.push({name:'建议', value:'请检查Token是否正确，注意是「用户Token」而非「消息Token」', ok:false});
+          }
         }
+      }catch(e){
+        results.push({name:'网络连通', value:'失败: '+e.message, ok:false});
+        results.push({name:'建议', value:'请检查网络连接，或尝试更换推送方式', ok:false});
       }
-      return ok;
-    }catch(e){
-      console.warn('推送失败',e);
-      return false;
+    }else{
+      if(!cfg.url){
+        results.push({name:'Webhook配置', value:'未配置', ok:false});
+        return results;
+      }
+      results.push({name:'URL格式', value: cfg.url.includes('qyapi.weixin.qq.com')?'正确':'错误', ok: cfg.url.includes('qyapi.weixin.qq.com')});
+      results.push({name:'代理模式', value: cfg.useProxy?'已启用(推荐)':'未启用', ok: cfg.useProxy});
     }
+
+    return results;
   }
 };
 
@@ -1615,6 +1928,7 @@ const ManualModule = {
     const list = StorageModule.loadManual();
     list.push({id:'m_'+Date.now(), title:'新章节', content:'', image:''});
     StorageModule.saveManual(list);
+    if(ServerModule.available) ServerModule.saveManual(list);
     this.render();
   },
 
@@ -1625,6 +1939,7 @@ const ManualModule = {
     if(j<0 || j>=list.length) return;
     [list[i],list[j]] = [list[j],list[i]];
     StorageModule.saveManual(list);
+    if(ServerModule.available) ServerModule.saveManual(list);
     this.render();
   },
 
@@ -1632,8 +1947,9 @@ const ManualModule = {
     let list = StorageModule.loadManual();
     list = list.filter(c=>c.id!==id);
     StorageModule.saveManual(list);
-    this.render();
     SyncModule.syncToClient();
+    if(ServerModule.available) ServerModule.saveManual(list);
+    this.render();
     UI.toast('章节已删除','success');
   },
 
@@ -1644,6 +1960,7 @@ const ManualModule = {
     const ch = list.find(c=>c.id===id);
     ch.image = base64;
     StorageModule.saveManual(list);
+    if(ServerModule.available) await ServerModule.saveManual(list);
     ManualModule.render();
   },
 
@@ -1651,10 +1968,11 @@ const ManualModule = {
     const list = StorageModule.loadManual();
     list.find(c=>c.id===id).image = '';
     StorageModule.saveManual(list);
+    if(ServerModule.available) ServerModule.saveManual(list);
     ManualModule.render();
   },
 
-  saveAll(){
+  async saveAll(){
     const list = StorageModule.loadManual();
     document.querySelectorAll('[data-mid]').forEach(el=>{
       const id = el.dataset.mid;
@@ -1666,7 +1984,8 @@ const ManualModule = {
     });
     StorageModule.saveManual(list);
     SyncModule.syncToClient();
-    UI.toast('说明书已保存并同步','success');
+    if(ServerModule.available) await ServerModule.saveManual(list);
+    UI.toast('说明书已保存'+(ServerModule.available?'并同步到服务器':''),'success');
   }
 };
 
@@ -1677,9 +1996,12 @@ const OrderModule = {
   // 当前筛选状态
   filter: {club:'all', status:'all'},
 
-  render(){
+  async render(){
     const clubs = StorageModule.loadClubs();
-    const orders = StorageModule.loadOrders();
+    let orders = StorageModule.loadOrders();
+    if(ServerModule.available){
+      orders = await ServerModule.loadOrders();
+    }
     const f = this.filter;
     const filtered = orders.filter(o=>{
       if(f.club!=='all' && o.clubId!==f.club) return false;
@@ -1794,11 +2116,22 @@ const OrderModule = {
     const oldStatus = o.status;
     o.status = status;
     StorageModule.saveOrders(orders);
+    
+    if(ServerModule.available){
+      await ServerModule.updateOrderStatus(orderId, status);
+    }
+    
     this.render();
     
     if(oldStatus==='pending' && status==='done'){
       UI.toast('正在推送微信通知...','info');
-      const ok = await PushModule.sendOrderPush(o);
+      let ok = false;
+      if(ServerModule.available){
+        const res = await ServerModule.pushOrder(o);
+        ok = res.success;
+      }else{
+        ok = await PushModule.sendOrderPush(o);
+      }
       if(ok) UI.toast('订单已确认,微信通知已发送 ✓','success');
       else UI.toast('订单已确认,但推送失败','warn');
     }else{
@@ -1916,17 +2249,22 @@ const NAV_ITEMS = [
   {key:'reset', label:'系统重置', icon:'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'}
 ];
 
-function initApp(){
+async function initApp(){
   // 初始化默认数据
   DefaultDataModule.initAll();
+  // 初始化同步通道
+  SyncModule.init();
+  // 尝试连接后端服务
+  await ServerModule.init();
   // 渲染侧边导航
   document.getElementById('navList').innerHTML = NAV_ITEMS.map(it=>`
     <button data-key="${it.key}" onclick="UI.switchTab('${it.key}')" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-gray-600 hover:bg-seagrad/60 transition text-left">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${it.icon}"/></svg>
       ${it.label}
     </button>`).join('');
-  // 版本号
-  document.getElementById('versionTag').textContent = `数据版本 v${StorageModule.getVersion()}`;
+  // 版本号 & 服务器状态
+  const serverBadge = ServerModule.available ? '<span class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">☁ 云端同步</span>' : '<span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">📱 本地模式</span>';
+  document.getElementById('versionTag').innerHTML = `数据版本 v${StorageModule.getVersion()} ${serverBadge}`;
   // 进入品牌配置
   UI.switchTab('brand');
 }

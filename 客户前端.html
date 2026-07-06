@@ -51,6 +51,10 @@ body{font-family:"Noto Sans SC",sans-serif;background:linear-gradient(180deg,#ff
 .dot-active{background:var(--gold)!important;width:20px!important}
 /* 联系条悬浮 */
 .contact-bar{box-shadow:0 -4px 20px rgba(0,74,124,.1)}
+/* 订单状态标签 */
+.badge-pending{background:#FEF3C7;color:#92400E}
+.badge-done{background:#D1FAE5;color:#065F46}
+.badge-cancel{background:#FEE2E2;color:#991B1B}
 </style>
 </head>
 <body>
@@ -184,6 +188,89 @@ const StorageModule = {
 };
 
 /* ============================================================
+   模块二:ServerModule 服务器通信层
+   自动检测后端服务,优先从服务器拉取配置
+============================================================ */
+const ServerModule = {
+  available: false,
+
+  async init(){
+    try{
+      const res = await fetch('/api/config');
+      if(res.ok){
+        const data = await res.json();
+        this.available = true;
+        if(data.brand) localStorage.setItem(StorageModule.KEYS.BRAND, JSON.stringify(data.brand));
+        if(data.clubs) localStorage.setItem(StorageModule.KEYS.CLUBS, JSON.stringify(data.clubs));
+        if(data.ai) localStorage.setItem(StorageModule.KEYS.AI, JSON.stringify(data.ai));
+        if(data.manual) localStorage.setItem(StorageModule.KEYS.MANUAL, JSON.stringify(data.manual));
+        if(data.webhook) localStorage.setItem(StorageModule.KEYS.WEBHOOK, JSON.stringify(data.webhook));
+        console.log('[Server] 已连接后端,配置已同步');
+        return true;
+      }
+    }catch(e){
+      console.log('[Server] 无后端服务,使用本地数据');
+    }
+    this.available = false;
+    return false;
+  },
+
+  async createOrder(order){
+    if(!this.available) {
+      const orders = StorageModule.loadOrders() || [];
+      orders.push(order);
+      StorageModule.saveOrders(orders);
+      return { success: true, orderId: order.orderId };
+    }
+    try{
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order)
+      });
+      const result = await res.json();
+      if(result.success && result.order){
+        const orders = StorageModule.loadOrders() || [];
+        const idx = orders.findIndex(o=>o.orderId===result.order.orderId);
+        if(idx>=0) orders[idx]=result.order; else orders.push(result.order);
+        StorageModule.saveOrders(orders);
+      }
+      return result;
+    }catch(e){
+      return { success: false, error: e.message };
+    }
+  },
+
+  async pushOrder(order){
+    if(!this.available) return { success: false };
+    try{
+      const res = await fetch('/api/push/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order)
+      });
+      return await res.json();
+    }catch(e){
+      return { success: false, error: e.message };
+    }
+  },
+
+  async aiChat(messages){
+    if(!this.available) return { success: false, error: '无后端服务' };
+    try{
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages })
+      });
+      return await res.json();
+    }catch(e){
+      return { success: false, error: e.message };
+    }
+  },
+};
+
+/* ============================================================
    模块二:UI 通用工具层
 ============================================================ */
 const UI = {
@@ -217,8 +304,70 @@ const UI = {
 };
 
 /* ============================================================
-   模块三:App 主控模块(Tab 路由 + 顶部品牌信息)
+   模块三:SyncModule 同步模块
+   支持 BroadcastChannel 同域双页面实时同步
+   支持 storage 事件监听跨标签页同步
 ============================================================ */
+const SyncModule = {
+  _channel: null,
+  _checkTimer: null,
+  _lastVersion: 0,
+
+  init(){
+    try{
+      this._channel = new BroadcastChannel('nzch_sync');
+      this._channel.onmessage = (e) => {
+        if(e.data && e.data.type === 'config_update'){
+          console.log('[Sync] 收到配置更新通知,版本:', e.data.data?.version);
+          this.refreshConfig();
+        }
+      };
+    }catch(e){
+      console.log('[Sync] BroadcastChannel 不可用', e);
+    }
+
+    // storage 事件监听(跨标签页)
+    window.addEventListener('storage', (e) => {
+      if(e.key === 'nzch_version'){
+        console.log('[Sync] storage事件:版本号变化');
+        this.refreshConfig();
+      }
+    });
+
+    // 启动定时检查(兜底方案)
+    this.startPeriodicCheck();
+  },
+
+  broadcast(type, data){
+    try{
+      if(this._channel){
+        this._channel.postMessage({ type, data, from: 'client' });
+      }
+    }catch(e){}
+  },
+
+  startPeriodicCheck(){
+    if(this._checkTimer) clearInterval(this._checkTimer);
+    this._lastVersion = StorageModule.get('nzch_version', 0);
+    this._checkTimer = setInterval(()=>{
+      const v = StorageModule.get('nzch_version', 0);
+      if(v !== this._lastVersion){
+        console.log('[Sync] 检测到版本变化:', this._lastVersion, '→', v);
+        this._lastVersion = v;
+        this.refreshConfig();
+      }
+    }, 5000);
+  },
+
+  // 从 localStorage 刷新配置并重新渲染
+  refreshConfig(){
+    console.log('[Sync] 刷新配置中...');
+    App.refreshBrand();
+    const currentTab = App.currentTab;
+    const map = {home:HomeModule, clubs:ClubsModule, ai:AIModule, booking:BookingModule, mine:MineModule};
+    if(map[currentTab]) map[currentTab].render();
+  }
+};
 const App = {
   currentTab:'home',
   switchTab(tab){
@@ -661,12 +810,31 @@ const AIModule = {
     // 注入角色词+商家信息+码头数据
     const sysPrompt=(cfg.systemPrompt||'')+`\n\n【当前商家信息】\n微信:${brand.wechat}\n电话:${brand.phone}\n营业时间:${brand.businessHours}\n\n【五大码头实时数据】\n`+clubs.map(c=>`${c.name}(${c.area}):${c.intro} 起价${c.pricing[0]?.price}元,时段${c.timeSlots.join('/')}`).join('\n');
     this.chatHistory.push({role:'user',content:userMessage});
+    const messages=[{role:'system',content:sysPrompt},...this.chatHistory.slice(-8)];
+    
+    // 优先通过后端调用(更稳定,无跨域问题)
+    if(ServerModule.available){
+      try{
+        const res=await ServerModule.aiChat(messages);
+        if(res.success){
+          const reply=res.content||'暂无回复';
+          this.chatHistory.push({role:'assistant',content:reply});
+          return reply;
+        }
+        throw new Error(res.error||'AI请求失败');
+      }catch(e){
+        throw new Error(e.message||'AI请求失败');
+      }
+    }
+    
+    // 本地直连模式(无后端时使用)
+    if(!cfg.apiKey) throw new Error('AI未配置,请联系商家');
     let res;
     try{
       res=await fetch(cfg.apiUrl,{
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':`Bearer ${cfg.apiKey}`},
-        body:JSON.stringify({model:cfg.model,messages:[{role:'system',content:sysPrompt},...this.chatHistory.slice(-8)],max_tokens:800,temperature:0.7})
+        body:JSON.stringify({model:cfg.model,messages,max_tokens:800,temperature:0.7})
       });
     }catch(e){throw new Error('网络异常,请检查网络连接')}
     if(!res.ok){
@@ -803,12 +971,34 @@ const BookingModule = {
       customerPhone:f.customerPhone,remark:f.remark.trim(),
       status:'pending',createdAt:new Date().toISOString()
     };
-    // 写入订单台账
-    const orders=StorageModule.loadOrders();
-    orders.push(order);
-    StorageModule.saveOrders(orders);
+    
+    // 写入订单(优先通过后端)
+    let pushOk = false;
+    if(ServerModule.available){
+      const res = await ServerModule.createOrder(order);
+      if(!res.success){
+        UI.toast('提交失败:'+(res.error||'请重试'),'error');
+        return;
+      }
+      if(res.order) Object.assign(order, res.order);
+      // 后端模式下由后端负责推送
+      try{
+        const pushRes = await ServerModule.pushOrder(order);
+        pushOk = pushRes.success;
+      }catch(e){ console.warn('后端推送失败', e); }
+    }else{
+      const orders=StorageModule.loadOrders();
+      orders.push(order);
+      StorageModule.saveOrders(orders);
+      // 本地模式下前端推送
+      pushOk = await this.pushWebhook(order, brand);
+    }
+
+    // 广播新订单通知(同域管理后台)
+    SyncModule.broadcast('order_new', { orderId: order.orderId });
+    
     // 成功弹窗
-    this.showSuccess(orderId,brand);
+    this.showSuccess(order.orderId, brand, pushOk);
   },
   // 生成订单号 NZC+yyyyMMddHHmmss+随机
   genOrderId(){
@@ -817,10 +1007,10 @@ const BookingModule = {
     const rand=Math.random().toString(36).slice(2,6).toUpperCase();
     return `NZC${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${rand}`;
   },
-  // 消息推送(PushPlus/企业微信)
+  // 消息推送(PushPlus/企业微信) - 带重试机制
   async pushWebhook(order,brand){
     const cfg=StorageModule.loadWebhook();
-    if(!cfg)return;
+    if(!cfg) return false;
     const type=cfg.type||'pushplus';
     const title='【南崽出海】新游艇预约通知';
     const content=`【南崽出海·新游艇预约通知】
@@ -837,26 +1027,50 @@ const BookingModule = {
 商家对接：微信${brand.wechat} / 电话${brand.phone}
 提交时间：${new Date(order.createdAt).toLocaleString('zh-CN')}
 请尽快联系客户确认档期！`;
-    try{
-      if(type==='pushplus' && cfg.token){
-        await fetch('https://www.pushplus.plus/send',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({token:cfg.token,title:title,content:content,template:'txt'})
-        });
-      }else if(type==='wecom' && cfg.url){
-        const body=JSON.stringify({msgtype:'text',text:{content}});
-        if(cfg.useProxy){
-          await fetch('https://api.allorigins.win/post?url='+encodeURIComponent(cfg.url),{
+
+    const maxRetries = 3;
+    for(let attempt=1; attempt<=maxRetries; attempt++){
+      try{
+        let ok = false;
+        if(type==='pushplus' && cfg.token){
+          const domains = ['https://www.pushplus.plus/send', 'https://pushplus.plus/send', 'https://pushplus.hxtrip.com/send'];
+          const domain = domains[(attempt-1) % domains.length];
+          const res = await fetch(domain,{
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body
+            body:JSON.stringify({token:cfg.token,title:title,content:content,template:'txt'})
           });
-        }else{
-          await fetch(cfg.url,{method:'POST',headers:{'Content-Type':'application/json'},body});
+          const data = await res.json();
+          if(data.code===200) ok = true;
+        }else if(type==='wecom' && cfg.url){
+          const body=JSON.stringify({msgtype:'text',text:{content}});
+          if(cfg.useProxy){
+            const proxies = ['https://api.allorigins.win/post?url=', 'https://corsproxy.io/?'];
+            const proxy = proxies[(attempt-1) % proxies.length];
+            const res = await fetch(proxy+encodeURIComponent(cfg.url),{
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body
+            });
+            const data = await res.json();
+            const result = data.contents ? JSON.parse(data.contents) : data;
+            if(result.errcode===0) ok = true;
+          }else{
+            const res = await fetch(cfg.url,{method:'POST',headers:{'Content-Type':'application/json'},body});
+            const data = await res.json();
+            if(data.errcode===0) ok = true;
+          }
         }
+        if(ok){
+          console.log(`[Push] 第${attempt}次推送成功`);
+          return true;
+        }
+      }catch(e){ console.warn(`[Push] 第${attempt}次推送失败:`, e); }
+      if(attempt < maxRetries){
+        await new Promise(r => setTimeout(r, attempt * 1000));
       }
-    }catch(e){console.warn('推送失败',e)}
+    }
+    return false;
   },
   // 成功弹窗
   showSuccess(orderId,brand){
@@ -984,7 +1198,10 @@ const ManualModule = {
 /* ============================================================
    初始化
 ============================================================ */
-function initApp(){
+async function initApp(){
+  // 优先尝试从后端服务器拉取配置
+  await ServerModule.init();
+
   // 从URL参数导入推送配置(用于跨设备同步)
   // 支持 ?t=xxx (PushPlus短模式) 和 ?w=xxx (企业微信base64模式) 和 ?c=xxx (完整配置) 和 #push=xxx (旧模式兼容)
   const urlParams = new URLSearchParams(window.location.search);
@@ -994,7 +1211,7 @@ function initApp(){
   const hash = window.location.hash;
 
   let imported = false;
-  if(c){
+  if(!ServerModule.available && c){
     // 完整配置模式: ?c=base64 (包含品牌、俱乐部、图片、AI、说明书、推送等全部配置)
     try{
       const cfg = JSON.parse(decodeURIComponent(escape(atob(c))));
@@ -1066,6 +1283,9 @@ function initApp(){
       localStorage.setItem('nzch_manual',JSON.stringify(defaultManual));
     }
   }
+  // 初始化同步模块(实时监听后台配置更新)
+  SyncModule.init();
+
   App.refreshBrand();
   App.switchTab('home');
 }
