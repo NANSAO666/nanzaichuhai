@@ -821,6 +821,63 @@ const SyncModule = {
     }).catch(()=>{
       UI.toast('复制失败,请手动复制','error');
     });
+  },
+
+  // 解析URL参数中的订单数据
+  parseOrderFromURL(){
+    try{
+      const urlParams = new URLSearchParams(window.location.search);
+      const orderEncoded = urlParams.get('o');
+      if(!orderEncoded) return null;
+      
+      const json = decodeURIComponent(escape(atob(orderEncoded)));
+      const data = JSON.parse(json);
+      
+      if(data.type === 'order' && data.order){
+        return data.order;
+      }
+      return null;
+    }catch(e){
+      console.warn('解析订单链接失败', e);
+      return null;
+    }
+  },
+
+  // 导入订单到后台
+  importOrder(order){
+    try{
+      const orders = StorageModule.loadOrders() || [];
+      const exists = orders.find(o => o.orderId === order.orderId);
+      
+      if(exists){
+        Object.assign(exists, order);
+        UI.toast('订单已更新','success');
+      }else{
+        orders.push(order);
+        UI.toast('新订单已导入 ✓','success');
+      }
+      
+      StorageModule.saveOrders(orders);
+      
+      if(OrderModule && typeof OrderModule.render === 'function'){
+        OrderModule.render();
+      }
+      
+      return true;
+    }catch(e){
+      console.error('导入订单失败', e);
+      UI.toast('导入失败:'+e.message,'error');
+      return false;
+    }
+  },
+
+  // 检查URL中是否有订单数据并自动导入
+  checkAndImportOrder(){
+    const order = this.parseOrderFromURL();
+    if(order){
+      this.importOrder(order);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }
 };
 
@@ -2254,6 +2311,8 @@ async function initApp(){
   DefaultDataModule.initAll();
   // 初始化同步通道
   SyncModule.init();
+  // 检查URL中是否有订单数据并导入
+  SyncModule.checkAndImportOrder();
   // 尝试连接后端服务
   await ServerModule.init();
   // 渲染侧边导航

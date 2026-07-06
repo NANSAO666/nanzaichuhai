@@ -366,6 +366,35 @@ const SyncModule = {
     const currentTab = App.currentTab;
     const map = {home:HomeModule, clubs:ClubsModule, ai:AIModule, booking:BookingModule, mine:MineModule};
     if(map[currentTab]) map[currentTab].render();
+  },
+
+  // 导出订单为Base64字符串(跨设备同步用)
+  exportOrder(order){
+    const data = {
+      type: 'order',
+      v: 1,
+      order: order
+    };
+    const json = JSON.stringify(data);
+    return btoa(unescape(encodeURIComponent(json)));
+  },
+
+  // 生成订单同步链接
+  genOrderLink(order){
+    try{
+      const encoded = this.exportOrder(order);
+      let baseUrl = window.location.origin + window.location.pathname;
+      baseUrl = baseUrl.replace(/客户前端\.html/i, '管理员后台.html');
+      if(baseUrl.indexOf('客户')>-1){
+        const path = window.location.pathname;
+        const dir = path.substring(0, path.lastIndexOf('/')+1);
+        baseUrl = window.location.origin + dir + '管理员后台.html';
+      }
+      return baseUrl + '?o=' + encoded;
+    }catch(e){
+      console.warn('生成订单链接失败', e);
+      return null;
+    }
   }
 };
 const App = {
@@ -998,7 +1027,7 @@ const BookingModule = {
     SyncModule.broadcast('order_new', { orderId: order.orderId });
     
     // 成功弹窗
-    this.showSuccess(order.orderId, brand, pushOk);
+    this.showSuccess(order, brand, pushOk);
   },
   // 生成订单号 NZC+yyyyMMddHHmmss+随机
   genOrderId(){
@@ -1073,7 +1102,8 @@ const BookingModule = {
     return false;
   },
   // 成功弹窗
-  showSuccess(orderId,brand){
+  showSuccess(order,brand){
+    const orderLink = SyncModule.genOrderLink(order);
     UI.modal('预约提交成功', `
       <div class="p-6 text-center">
         <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
@@ -1081,7 +1111,12 @@ const BookingModule = {
         </div>
         <h3 class="font-serif-display text-lg font-bold text-deepsea mb-1">预约已提交!</h3>
         <p class="text-sm text-gray-500 mb-3">您的订单编号</p>
-        <div class="bg-seagrad rounded-xl py-3 px-4 font-mono text-deepsea font-bold text-lg tracking-wider mb-4">${orderId}</div>
+        <div class="bg-seagrad rounded-xl py-3 px-4 font-mono text-deepsea font-bold text-lg tracking-wider mb-4">${order.orderId}</div>
+        ${orderLink ? `
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+          <p class="text-sm text-blue-700 mb-2">📢 点击下方链接通知管理员</p>
+          <button onclick="UI.copyText('${orderLink}', '订单通知链接已复制')" class="btn-primary w-full py-2 text-sm">立即通知管理员</button>
+        </div>` : ''}
         <div class="bg-orange/5 border border-orange/20 rounded-xl p-3 text-left">
           <p class="text-sm text-gray-700 mb-2">商家将快速联系您确认档期,您也可主动联系:</p>
           <div class="space-y-1.5">
