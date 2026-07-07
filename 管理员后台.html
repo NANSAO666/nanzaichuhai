@@ -2287,8 +2287,13 @@ const ManualModule = {
    模块十一:OrderModule 预约订单台账模块
 ============================================================ */
 const OrderModule = {
-  // 当前筛选状态
   filter: {club:'all', status:'all'},
+
+  async refresh(){
+    UI.toast('正在刷新订单...','info');
+    await this.render();
+    UI.toast('订单已刷新','success');
+  },
 
   async render(){
     const clubs = StorageModule.loadClubs();
@@ -2365,8 +2370,8 @@ const OrderModule = {
           <p class="text-xs md:text-sm text-gray-500 mt-1">共 ${orders.length} 单 ${cloudStatus}</p>
         </div>
         <div class="flex gap-2">
-          <button onclick="OrderModule.render()" class="btn-primary px-3 py-2 rounded-lg text-xs">🔄 刷新</button>
-          <button onclick="CloudModule.init().then(ok=>{if(ok){OrderModule.render();UI.toast('云端连接成功','success')}else{UI.toast('云端连接失败','error')}})" class="btn-gold px-3 py-2 rounded-lg text-xs">${CloudModule.available?'重新连接':'连接云端'}</button>
+          <button onclick="OrderModule.refresh()" class="btn-primary px-3 py-2 rounded-lg text-xs font-medium">🔄 刷新订单</button>
+          <button onclick="CloudModule.init().then(ok=>{if(ok){OrderModule.render();UI.toast('云端连接成功','success')}else{UI.toast('云端连接失败','error')}})" class="btn-gold px-3 py-2 rounded-lg text-xs">${CloudModule.available?'☁ 已连接':'连接云端'}</button>
         </div>
       </div>
       <div class="bg-white card-soft p-3 md:p-4 mb-4 flex flex-col sm:flex-row gap-3 sm:gap-4">

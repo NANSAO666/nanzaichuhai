@@ -173,18 +173,26 @@ body{font-family:"Noto Sans SC",sans-serif;background:linear-gradient(180deg,#ff
 const StorageModule = {
   KEYS:{BRAND:'nzch_brand',CLUBS:'nzch_clubs',AI:'nzch_ai_config',WEBHOOK:'nzch_webhook',MANUAL:'nzch_manual',ORDERS:'nzch_orders',VERSION:'nzch_version'},
   get(key,fallback){try{const r=localStorage.getItem(key);return r?JSON.parse(r):fallback}catch(e){return fallback}},
+  set(key,val){try{localStorage.setItem(key,JSON.stringify(val));return true}catch(e){console.warn('Storage set error',e);return false}},
   loadBrand(){return this.get(this.KEYS.BRAND,null)},
+  saveBrand(b){ return this.set(this.KEYS.BRAND, b); },
   loadClubs(){return this.get(this.KEYS.CLUBS,[])},
+  saveClubs(c){ return this.set(this.KEYS.CLUBS, c); },
   loadAI(){return this.get(this.KEYS.AI,null)},
+  saveAI(a){ return this.set(this.KEYS.AI, a); },
   loadWebhook(){
     const raw = this.get(this.KEYS.WEBHOOK, null);
     if(!raw) return {url:'', useProxy:true};
     if(typeof raw === 'string') return {url:raw, useProxy:true};
     return raw;
   },
+  saveWebhook(w){ return this.set(this.KEYS.WEBHOOK, w); },
   loadManual(){return this.get(this.KEYS.MANUAL,[])},
+  saveManual(m){ return this.set(this.KEYS.MANUAL, m); },
   loadOrders(){return this.get(this.KEYS.ORDERS,[])},
   saveOrders(o){try{localStorage.setItem(this.KEYS.ORDERS,JSON.stringify(o));return true}catch(e){return false}},
+  getVersion(){ return this.get(this.KEYS.VERSION, 1); },
+  setVersion(v){ return this.set(this.KEYS.VERSION, v); },
 };
 
 /* ============================================================
@@ -472,7 +480,9 @@ const UI = {
 const SyncModule = {
   _channel: null,
   _checkTimer: null,
+  _cloudCheckTimer: null,
   _lastVersion: 0,
+  _lastCloudVersion: 0,
 
   init(){
     try{
@@ -487,7 +497,6 @@ const SyncModule = {
       console.log('[Sync] BroadcastChannel 不可用', e);
     }
 
-    // storage 事件监听(跨标签页)
     window.addEventListener('storage', (e) => {
       if(e.key === 'nzch_version'){
         console.log('[Sync] storage事件:版本号变化');
@@ -495,8 +504,8 @@ const SyncModule = {
       }
     });
 
-    // 启动定时检查(兜底方案)
     this.startPeriodicCheck();
+    this.startCloudCheck();
   },
 
   broadcast(type, data){
@@ -505,6 +514,40 @@ const SyncModule = {
         this._channel.postMessage({ type, data, from: 'client' });
       }
     }catch(e){}
+  },
+
+  startCloudCheck(){
+    if(this._cloudCheckTimer) clearInterval(this._cloudCheckTimer);
+    this._cloudCheckTimer = setInterval(()=>{
+      if(CloudModule.available){
+        this.checkCloudUpdate();
+      }
+    }, 30000);
+  },
+
+  async checkCloudUpdate(){
+    try{
+      const res = await CloudModule.query('nzch_config', {}, 1, '_id desc');
+      if(res.data && res.data.length > 0){
+        const cfg = res.data[0];
+        const cloudVersion = cfg.version || 0;
+        const localVersion = StorageModule.getVersion();
+        if(cloudVersion > localVersion){
+          console.log('[Sync] 检测到云端新版本:', localVersion, '→', cloudVersion);
+          if(cfg.brand) StorageModule.saveBrand(cfg.brand);
+          if(cfg.clubs) StorageModule.saveClubs(cfg.clubs);
+          if(cfg.ai) StorageModule.saveAI(cfg.ai);
+          if(cfg.manual) StorageModule.saveManual(cfg.manual);
+          if(cfg.webhook) StorageModule.saveWebhook(cfg.webhook);
+          if(cfg.version) StorageModule.setVersion(cfg.version);
+          CloudModule.configDocId = cfg._id;
+          this.refreshConfig();
+          UI.toast('数据已更新','success');
+        }
+      }
+    }catch(e){
+      console.warn('[Sync] 云端检查失败', e);
+    }
   },
 
   startPeriodicCheck(){
