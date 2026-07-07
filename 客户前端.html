@@ -6,8 +6,6 @@
 <title>南崽出海 · 赴一场江海浪漫</title>
 <!-- ========== Tailwind CSS via CDN ========== -->
 <script src="https://cdn.tailwindcss.com"></script>
-<!-- ========== uniCloud Web SDK ========== -->
-<script src="https://cdn.jsdelivr.net/npm/@dcloudio/uni-cloud-js-sdk/dist/uni-cloud-js-sdk.js"></script>
 <!-- ========== Google Fonts ========== -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -274,13 +272,14 @@ const ServerModule = {
 
 /* ============================================================
    CloudModule uniCloud云端同步模块
-   通过uniCloud Web SDK (clientDB) 实现跨设备数据同步
+   通过uniCloud HTTP API (clientDB) 直接调用,无需SDK
 ============================================================ */
 const CloudModule = {
-  uniCloud: null,
-  db: null,
   available: false,
   spaceId: '',
+  clientSecret: '',
+  endpoint: 'https://api.next.bspapp.com',
+  configDocId: '',
 
   async init(){
     const savedSpaceId = StorageModule.get('nzch_space_id', '');
@@ -310,28 +309,20 @@ const CloudModule = {
 
   async connect(spaceId, clientSecret){
     try{
-      if(typeof UniCloud === 'undefined'){
-        console.warn('[Cloud] uniCloud SDK 未加载');
-        return false;
-      }
-      this.uniCloud = new UniCloud({
-        spaceId: spaceId,
-        clientSecret: clientSecret,
-        endpoint: 'https://api.next.bspapp.com'
-      });
-      this.db = this.uniCloud.database();
       this.spaceId = spaceId;
+      this.clientSecret = clientSecret;
       StorageModule.set('nzch_space_id', spaceId);
       StorageModule.set('nzch_client_secret', clientSecret);
       
       // 测试连接并同步配置
-      const res = await this.db.collection('nzch_config').orderBy('_id', 'desc').limit(1).get();
+      const res = await this.query('nzch_config', {}, 1, '_id desc');
       this.available = true;
       console.log('[Cloud] uniCloud 连接成功');
       
       // 同步配置
-      if(res.result && res.result.data && res.result.data.length > 0){
-        const cfg = res.result.data[0];
+      if(res.data && res.data.length > 0){
+        const cfg = res.data[0];
+        this.configDocId = cfg._id;
         if(cfg.brand) StorageModule.saveBrand(cfg.brand);
         if(cfg.clubs) StorageModule.saveClubs(cfg.clubs);
         if(cfg.ai) StorageModule.saveAI(cfg.ai);
@@ -348,6 +339,61 @@ const CloudModule = {
     }
   },
 
+  // 通用请求函数
+  async request(action, params){
+    const url = `${this.endpoint}/database`;
+    const body = {
+      action: action,
+      ...params
+    };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uni-cloud-spaceid': this.spaceId,
+        'x-uni-cloud-client-secret': this.clientSecret
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    return data;
+  },
+
+  // 查询
+  async query(collection, where, limit, orderby){
+    const params = {
+      collection,
+      field: '*',
+      limit: limit || 20,
+      skip: 0
+    };
+    if(where && Object.keys(where).length > 0){
+      params.query = where;
+    }
+    if(orderby) params.orderby = orderby;
+    const res = await this.request('select', params);
+    return res;
+  },
+
+  // 添加
+  async add(collection, data){
+    const res = await this.request('add', {
+      collection,
+      data: data
+    });
+    return res;
+  },
+
+  // 更新
+  async update(collection, where, data){
+    const res = await this.request('update', {
+      collection,
+      query: where,
+      data: data
+    });
+    return res;
+  },
+
   async createOrder(order){
     if(!this.available){
       const orders = StorageModule.loadOrders() || [];
@@ -357,12 +403,12 @@ const CloudModule = {
     }
     try{
       const orderData = { ...order, createdAt: Date.now() };
-      const res = await this.db.collection('nzch_orders').add(orderData);
-      if(res.result && res.result.id){
+      const res = await this.add('nzch_orders', orderData);
+      if(res.id){
         const orders = StorageModule.loadOrders() || [];
-        orders.push({ ...orderData, _id: res.result.id });
+        orders.push({ ...orderData, _id: res.id });
         StorageModule.saveOrders(orders);
-        return { success: true, order: { ...orderData, _id: res.result.id } };
+        return { success: true, order: { ...orderData, _id: res.id } };
       }
       return { success: false, error: '创建失败' };
     }catch(e){
@@ -376,8 +422,8 @@ const CloudModule = {
       return StorageModule.loadOrders().filter(o=>o.customerPhone===phone);
     }
     try{
-      const res = await this.db.collection('nzch_orders').where({ customerPhone: phone }).orderBy('createdAt', 'desc').get();
-      return (res.result && res.result.data) ? res.result.data : [];
+      const res = await this.query('nzch_orders', { customerPhone: phone }, 50, 'createdAt desc');
+      return res.data ? res.data : [];
     }catch(e){
       console.warn('[Cloud] 获取订单失败', e);
       return [];
