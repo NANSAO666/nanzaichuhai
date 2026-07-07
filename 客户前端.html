@@ -271,6 +271,89 @@ const ServerModule = {
 };
 
 /* ============================================================
+   CloudModule uniCloud云端同步模块
+   通过云函数URL化接口实现跨设备数据同步
+============================================================ */
+const CloudModule = {
+  apiUrl: '',
+  available: false,
+
+  async init(){
+    const savedUrl = StorageModule.get('nzch_cloud_url', '');
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlFromParam = urlParams.get('cloud');
+    
+    if(urlFromParam){
+      this.apiUrl = urlFromParam;
+      StorageModule.set('nzch_cloud_url', urlFromParam);
+    } else if(savedUrl){
+      this.apiUrl = savedUrl;
+    }
+    
+    if(!this.apiUrl) return false;
+    
+    try{
+      const res = await this.call('getConfig');
+      if(res.errCode === 0){
+        this.available = true;
+        if(res.data){
+          const cfg = res.data;
+          if(cfg.brand) StorageModule.saveBrand(cfg.brand);
+          if(cfg.clubs) StorageModule.saveClubs(cfg.clubs);
+          if(cfg.ai) StorageModule.saveAI(cfg.ai);
+          if(cfg.manual) StorageModule.saveManual(cfg.manual);
+          if(cfg.webhook) StorageModule.saveWebhook(cfg.webhook);
+          console.log('[Cloud] 云端配置已同步');
+        }
+        return true;
+      }
+    }catch(e){
+      console.warn('[Cloud] 连接失败', e);
+    }
+    this.available = false;
+    return false;
+  },
+
+  async call(action, data){
+    if(!this.apiUrl) throw new Error('未配置云端API地址');
+    const res = await fetch(this.apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, data })
+    });
+    return await res.json();
+  },
+
+  async createOrder(order){
+    if(!this.available){
+      const orders = StorageModule.loadOrders() || [];
+      orders.push(order);
+      StorageModule.saveOrders(orders);
+      return { success: true, order };
+    }
+    const res = await this.call('createOrder', order);
+    if(res.errCode === 0){
+      const orders = StorageModule.loadOrders() || [];
+      orders.push({ ...order, _id: res.data.id });
+      StorageModule.saveOrders(orders);
+      return { success: true, order: { ...order, _id: res.data.id } };
+    }
+    return { success: false, error: res.errMsg };
+  },
+
+  async getOrdersByPhone(phone){
+    if(!this.available){
+      return StorageModule.loadOrders().filter(o=>o.customerPhone===phone);
+    }
+    const res = await this.call('getOrders', { phone });
+    if(res.errCode === 0){
+      return res.data.list;
+    }
+    return [];
+  }
+};
+
+/* ============================================================
    模块二:UI 通用工具层
 ============================================================ */
 const UI = {

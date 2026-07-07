@@ -454,6 +454,126 @@ const ServerModule = {
 };
 
 /* ============================================================
+   CloudModule uniCloud云端同步模块
+   通过云函数URL化接口实现跨设备数据同步
+============================================================ */
+const CloudModule = {
+  apiUrl: '',
+  adminToken: 'nzch_admin_2026',
+  available: false,
+
+  async init(){
+    const savedUrl = StorageModule.get('nzch_cloud_url', '');
+    if(savedUrl){
+      this.apiUrl = savedUrl;
+    }
+    if(!this.apiUrl) return false;
+    
+    try{
+      const res = await this.call('getConfig');
+      if(res.errCode === 0){
+        this.available = true;
+        if(res.data){
+          const cfg = res.data;
+          if(cfg.brand) StorageModule.saveBrand(cfg.brand);
+          if(cfg.clubs) StorageModule.saveClubs(cfg.clubs);
+          if(cfg.ai) {
+            const localAi = StorageModule.loadAI() || {};
+            StorageModule.saveAI({ ...cfg.ai, apiKey: localAi.apiKey || cfg.ai.apiKey || '' });
+          }
+          if(cfg.manual) StorageModule.saveManual(cfg.manual);
+          if(cfg.webhook) {
+            const localWh = StorageModule.loadWebhook() || {};
+            StorageModule.saveWebhook({ ...localWh, ...cfg.webhook });
+          }
+          console.log('[Cloud] 云端配置已同步');
+        }
+        return true;
+      }
+    }catch(e){
+      console.warn('[Cloud] 连接失败', e);
+    }
+    this.available = false;
+    return false;
+  },
+
+  setApiUrl(url){
+    this.apiUrl = url;
+    StorageModule.set('nzch_cloud_url', url);
+  },
+
+  async call(action, data){
+    if(!this.apiUrl) throw new Error('未配置云端API地址');
+    const res = await fetch(this.apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        data,
+        token: action === 'getConfig' || action === 'createOrder' ? '' : this.adminToken
+      })
+    });
+    return await res.json();
+  },
+
+  async syncConfig(){
+    if(!this.available) return false;
+    const config = {
+      brand: StorageModule.loadBrand(),
+      clubs: StorageModule.loadClubs(),
+      ai: StorageModule.loadAI(),
+      manual: StorageModule.loadManual(),
+      webhook: StorageModule.loadWebhook(),
+      version: StorageModule.getVersion()
+    };
+    const res = await this.call('updateConfig', config);
+    return res.errCode === 0;
+  },
+
+  async getOrders(params){
+    if(!this.available) return { list: StorageModule.loadOrders(), total: StorageModule.loadOrders().length };
+    const res = await this.call('getOrders', params);
+    if(res.errCode === 0){
+      StorageModule.saveOrders(res.data.list);
+      return res.data;
+    }
+    return { list: [], total: 0 };
+  },
+
+  async createOrder(order){
+    if(!this.available){
+      const orders = StorageModule.loadOrders() || [];
+      orders.push(order);
+      StorageModule.saveOrders(orders);
+      return { success: true, order };
+    }
+    const res = await this.call('createOrder', order);
+    if(res.errCode === 0){
+      return { success: true, order: { ...order, _id: res.data.id } };
+    }
+    return { success: false, error: res.errMsg };
+  },
+
+  async updateOrder(orderId, updateData){
+    if(!this.available){
+      const orders = StorageModule.loadOrders() || [];
+      const order = orders.find(o => o.orderId === orderId);
+      if(order){ Object.assign(order, updateData); StorageModule.saveOrders(orders); }
+      return { success: true };
+    }
+    const res = await this.call('updateOrder', { orderId, ...updateData });
+    if(res.errCode === 0){
+      const orders = StorageModule.loadOrders() || [];
+      const order = orders.find(o => o.orderId === orderId);
+      if(order) Object.assign(order, updateData);
+      StorageModule.saveOrders(orders);
+      return { success: true };
+    }
+    return { success: false, error: res.errMsg };
+  }
+};
+
+/* ============================================================
    模块二:DefaultDataModule 默认数据初始化
    内置五大广州游艇俱乐部 + 品牌配置 + AI配置 + 说明书
 ============================================================ */
