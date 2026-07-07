@@ -299,7 +299,11 @@ const CloudModule = {
       StorageModule.set('nzch_client_secret', clientSecret);
     }
     
-    if(!spaceId || !clientSecret) return false;
+    // 如果没有配置过，使用默认的（硬编码）
+    if(!spaceId || !clientSecret){
+      spaceId = 'mp-be8bb2ea-2253-4636-aef9-ad4968f829d4';
+      clientSecret = 'bfodIRJzAUJ/DJU5N1+XAg==';
+    }
     
     return await this.connect(spaceId, clientSecret);
   },
