@@ -6,6 +6,8 @@
 <title>南崽出海 · 管理员后台</title>
 <!-- ========== Tailwind CSS via CDN ========== -->
 <script src="https://cdn.tailwindcss.com"></script>
+<!-- ========== uniCloud Web SDK ========== -->
+<script src="https://cdn.jsdelivr.net/npm/@dcloudio/uni-cloud-js-sdk/dist/uni-cloud-js-sdk.js"></script>
 <!-- ========== Google Fonts: 标题宋体轻奢 + 正文黑体 ========== -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -455,65 +457,83 @@ const ServerModule = {
 
 /* ============================================================
    CloudModule uniCloud云端同步模块
-   通过云函数URL化接口实现跨设备数据同步
+   通过uniCloud Web SDK (clientDB) 实现跨设备数据同步
 ============================================================ */
 const CloudModule = {
-  apiUrl: '',
-  adminToken: 'nzch_admin_2026',
+  uniCloud: null,
+  db: null,
   available: false,
+  spaceId: '',
+  configDocId: '',
 
   async init(){
-    const savedUrl = StorageModule.get('nzch_cloud_url', '');
-    if(savedUrl){
-      this.apiUrl = savedUrl;
+    const savedSpaceId = StorageModule.get('nzch_space_id', '');
+    const savedSecret = StorageModule.get('nzch_client_secret', '');
+    if(savedSpaceId && savedSecret){
+      this.spaceId = savedSpaceId;
+      return await this.connect(savedSpaceId, savedSecret);
     }
-    if(!this.apiUrl) return false;
-    
-    try{
-      const res = await this.call('getConfig');
-      if(res.errCode === 0){
-        this.available = true;
-        if(res.data){
-          const cfg = res.data;
-          if(cfg.brand) StorageModule.saveBrand(cfg.brand);
-          if(cfg.clubs) StorageModule.saveClubs(cfg.clubs);
-          if(cfg.ai) {
-            const localAi = StorageModule.loadAI() || {};
-            StorageModule.saveAI({ ...cfg.ai, apiKey: localAi.apiKey || cfg.ai.apiKey || '' });
-          }
-          if(cfg.manual) StorageModule.saveManual(cfg.manual);
-          if(cfg.webhook) {
-            const localWh = StorageModule.loadWebhook() || {};
-            StorageModule.saveWebhook({ ...localWh, ...cfg.webhook });
-          }
-          console.log('[Cloud] 云端配置已同步');
-        }
-        return true;
-      }
-    }catch(e){
-      console.warn('[Cloud] 连接失败', e);
-    }
-    this.available = false;
     return false;
   },
 
-  setApiUrl(url){
-    this.apiUrl = url;
-    StorageModule.set('nzch_cloud_url', url);
+  async connect(spaceId, clientSecret){
+    try{
+      if(typeof UniCloud === 'undefined'){
+        console.warn('[Cloud] uniCloud SDK 未加载');
+        return false;
+      }
+      this.uniCloud = new UniCloud({
+        spaceId: spaceId,
+        clientSecret: clientSecret,
+        endpoint: 'https://api.next.bspapp.com'
+      });
+      this.db = this.uniCloud.database();
+      this.spaceId = spaceId;
+      StorageModule.set('nzch_space_id', spaceId);
+      StorageModule.set('nzch_client_secret', clientSecret);
+      
+      // 测试连接
+      const res = await this.db.collection('nzch_config').limit(1).get();
+      this.available = true;
+      console.log('[Cloud] uniCloud 连接成功');
+      
+      // 同步配置
+      await this.syncConfigFromCloud();
+      return true;
+    }catch(e){
+      console.warn('[Cloud] 连接失败', e);
+      this.available = false;
+      return false;
+    }
   },
 
-  async call(action, data){
-    if(!this.apiUrl) throw new Error('未配置云端API地址');
-    const res = await fetch(this.apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action,
-        data,
-        token: action === 'getConfig' || action === 'createOrder' ? '' : this.adminToken
-      })
-    });
-    return await res.json();
+  async syncConfigFromCloud(){
+    if(!this.available) return false;
+    try{
+      const res = await this.db.collection('nzch_config').orderBy('_id', 'desc').limit(1).get();
+      if(res.result && res.result.data && res.result.data.length > 0){
+        const cfg = res.result.data[0];
+        this.configDocId = cfg._id;
+        if(cfg.brand) StorageModule.saveBrand(cfg.brand);
+        if(cfg.clubs) StorageModule.saveClubs(cfg.clubs);
+        if(cfg.ai) {
+          const localAi = StorageModule.loadAI() || {};
+          StorageModule.saveAI({ ...cfg.ai, apiKey: localAi.apiKey || cfg.ai.apiKey || '' });
+        }
+        if(cfg.manual) StorageModule.saveManual(cfg.manual);
+        if(cfg.webhook) {
+          const localWh = StorageModule.loadWebhook() || {};
+          StorageModule.saveWebhook({ ...localWh, ...cfg.webhook });
+        }
+        if(cfg.version) StorageModule.setVersion(cfg.version);
+        console.log('[Cloud] 云端配置已同步到本地');
+        return true;
+      }
+      return false;
+    }catch(e){
+      console.warn('[Cloud] 同步配置失败', e);
+      return false;
+    }
   },
 
   async syncConfig(){
@@ -524,20 +544,38 @@ const CloudModule = {
       ai: StorageModule.loadAI(),
       manual: StorageModule.loadManual(),
       webhook: StorageModule.loadWebhook(),
-      version: StorageModule.getVersion()
+      version: StorageModule.getVersion(),
+      updatedAt: Date.now()
     };
-    const res = await this.call('updateConfig', config);
-    return res.errCode === 0;
+    try{
+      if(this.configDocId){
+        await this.db.collection('nzch_config').doc(this.configDocId).update(config);
+      }else{
+        const res = await this.db.collection('nzch_config').add(config);
+        if(res.result && res.result.id){
+          this.configDocId = res.result.id;
+        }
+      }
+      console.log('[Cloud] 本地配置已同步到云端');
+      return true;
+    }catch(e){
+      console.warn('[Cloud] 同步配置到云端失败', e);
+      return false;
+    }
   },
 
   async getOrders(params){
     if(!this.available) return { list: StorageModule.loadOrders(), total: StorageModule.loadOrders().length };
-    const res = await this.call('getOrders', params);
-    if(res.errCode === 0){
-      StorageModule.saveOrders(res.data.list);
-      return res.data;
+    try{
+      let query = this.db.collection('nzch_orders');
+      const res = await query.orderBy('createdAt', 'desc').limit(100).get();
+      const list = (res.result && res.result.data) ? res.result.data : [];
+      StorageModule.saveOrders(list);
+      return { list, total: list.length };
+    }catch(e){
+      console.warn('[Cloud] 获取订单失败', e);
+      return { list: StorageModule.loadOrders(), total: StorageModule.loadOrders().length };
     }
-    return { list: [], total: 0 };
   },
 
   async createOrder(order){
@@ -547,11 +585,20 @@ const CloudModule = {
       StorageModule.saveOrders(orders);
       return { success: true, order };
     }
-    const res = await this.call('createOrder', order);
-    if(res.errCode === 0){
-      return { success: true, order: { ...order, _id: res.data.id } };
+    try{
+      const orderData = { ...order, createdAt: Date.now() };
+      const res = await this.db.collection('nzch_orders').add(orderData);
+      if(res.result && res.result.id){
+        const orders = StorageModule.loadOrders() || [];
+        orders.push({ ...orderData, _id: res.result.id });
+        StorageModule.saveOrders(orders);
+        return { success: true, order: { ...orderData, _id: res.result.id } };
+      }
+      return { success: false, error: '创建失败' };
+    }catch(e){
+      console.warn('[Cloud] 创建订单失败', e);
+      return { success: false, error: e.message };
     }
-    return { success: false, error: res.errMsg };
   },
 
   async updateOrder(orderId, updateData){
@@ -561,15 +608,20 @@ const CloudModule = {
       if(order){ Object.assign(order, updateData); StorageModule.saveOrders(orders); }
       return { success: true };
     }
-    const res = await this.call('updateOrder', { orderId, ...updateData });
-    if(res.errCode === 0){
-      const orders = StorageModule.loadOrders() || [];
-      const order = orders.find(o => o.orderId === orderId);
-      if(order) Object.assign(order, updateData);
-      StorageModule.saveOrders(orders);
-      return { success: true };
+    try{
+      const res = await this.db.collection('nzch_orders').where({ orderId: orderId }).update(updateData);
+      if(res.result && res.result.updated > 0){
+        const orders = StorageModule.loadOrders() || [];
+        const order = orders.find(o => o.orderId === orderId);
+        if(order) Object.assign(order, updateData);
+        StorageModule.saveOrders(orders);
+        return { success: true };
+      }
+      return { success: false, error: '订单未找到' };
+    }catch(e){
+      console.warn('[Cloud] 更新订单失败', e);
+      return { success: false, error: e.message };
     }
-    return { success: false, error: res.errMsg };
   }
 };
 
@@ -868,11 +920,20 @@ const SyncModule = {
   },
 
   // 后台保存后调用,刷新版本号并提示
-  syncToClient(){
+  async syncToClient(){
     const v = StorageModule.bumpVersion();
-    document.getElementById('versionTag').textContent = `数据版本 v${v}`;
+    let badge = '📱 本地模式';
+    if(ServerModule.available) badge = '☁ 服务器同步';
+    if(CloudModule.available) badge = '☁ uniCloud云端';
+    document.getElementById('versionTag').innerHTML = `数据版本 v${v} <span class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">${badge}</span>`;
     this.broadcast('config_update', { version: v });
-    UI.toast('已同步至客户前端,客户刷新即可看到最新数据','success');
+    // 同步到uniCloud云端
+    if(CloudModule.available){
+      CloudModule.syncConfig();
+      UI.toast('已保存并同步到云端','success');
+    }else{
+      UI.toast('已同步至客户前端,客户刷新即可看到最新数据','success');
+    }
   },
 
   // 导出全部配置为Base64字符串(含品牌、俱乐部、图片、AI、说明书等)
@@ -2179,6 +2240,10 @@ const OrderModule = {
     if(ServerModule.available){
       orders = await ServerModule.loadOrders();
     }
+    if(CloudModule.available){
+      const res = await CloudModule.getOrders();
+      orders = res.list;
+    }
     const f = this.filter;
     const filtered = orders.filter(o=>{
       if(f.club!=='all' && o.clubId!==f.club) return false;
@@ -2233,10 +2298,14 @@ const OrderModule = {
         </div>
       </div>`}).join('') : `<div class="text-center py-12 text-gray-400 bg-white card-soft">暂无订单数据</div>`;
 
+    const syncTip = CloudModule.available ? '<span class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full ml-2">☁ 云端同步</span>' : '';
     document.getElementById('contentArea').innerHTML = `
-      <div class="mb-4 md:mb-5">
-        <h2 class="font-serif-display text-xl md:text-2xl font-bold text-deepsea">预约订单台账</h2>
-        <p class="text-xs md:text-sm text-gray-500 mt-1">全量订单本地永久存储,共 ${orders.length} 单</p>
+      <div class="mb-4 md:mb-5 flex items-center justify-between">
+        <div>
+          <h2 class="font-serif-display text-xl md:text-2xl font-bold text-deepsea">预约订单台账</h2>
+          <p class="text-xs md:text-sm text-gray-500 mt-1">全量订单${CloudModule.available?'云端':'本地'}存储,共 ${orders.length} 单 ${syncTip}</p>
+        </div>
+        ${CloudModule.available ? `<button onclick="OrderModule.render()" class="btn-primary px-3 py-2 rounded-lg text-xs">🔄 刷新</button>` : ''}
       </div>
       <div class="bg-white card-soft p-3 md:p-4 mb-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
         <div class="flex-1"><label class="text-xs text-gray-500">筛选码头</label>
@@ -2296,6 +2365,9 @@ const OrderModule = {
     
     if(ServerModule.available){
       await ServerModule.updateOrderStatus(orderId, status);
+    }
+    if(CloudModule.available){
+      await CloudModule.updateOrder(orderId, { status });
     }
     
     this.render();
@@ -2435,6 +2507,8 @@ async function initApp(){
   SyncModule.checkAndImportOrder();
   // 尝试连接后端服务
   await ServerModule.init();
+  // 尝试连接uniCloud云端
+  await CloudModule.init();
   // 渲染侧边导航
   document.getElementById('navList').innerHTML = NAV_ITEMS.map(it=>`
     <button data-key="${it.key}" onclick="UI.switchTab('${it.key}')" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-gray-600 hover:bg-seagrad/60 transition text-left">
@@ -2442,7 +2516,9 @@ async function initApp(){
       ${it.label}
     </button>`).join('');
   // 版本号 & 服务器状态
-  const serverBadge = ServerModule.available ? '<span class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">☁ 云端同步</span>' : '<span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">📱 本地模式</span>';
+  let serverBadge = '<span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">📱 本地模式</span>';
+  if(ServerModule.available) serverBadge = '<span class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">☁ 服务器同步</span>';
+  if(CloudModule.available) serverBadge = '<span class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">☁ uniCloud云端</span>';
   document.getElementById('versionTag').innerHTML = `数据版本 v${StorageModule.getVersion()} ${serverBadge}`;
   // 进入品牌配置
   UI.switchTab('brand');

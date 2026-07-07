@@ -6,6 +6,8 @@
 <title>南崽出海 · 赴一场江海浪漫</title>
 <!-- ========== Tailwind CSS via CDN ========== -->
 <script src="https://cdn.tailwindcss.com"></script>
+<!-- ========== uniCloud Web SDK ========== -->
+<script src="https://cdn.jsdelivr.net/npm/@dcloudio/uni-cloud-js-sdk/dist/uni-cloud-js-sdk.js"></script>
 <!-- ========== Google Fonts ========== -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -272,56 +274,74 @@ const ServerModule = {
 
 /* ============================================================
    CloudModule uniCloud云端同步模块
-   通过云函数URL化接口实现跨设备数据同步
+   通过uniCloud Web SDK (clientDB) 实现跨设备数据同步
 ============================================================ */
 const CloudModule = {
-  apiUrl: '',
+  uniCloud: null,
+  db: null,
   available: false,
+  spaceId: '',
 
   async init(){
-    const savedUrl = StorageModule.get('nzch_cloud_url', '');
+    const savedSpaceId = StorageModule.get('nzch_space_id', '');
+    const savedSecret = StorageModule.get('nzch_client_secret', '');
     const urlParams = new URLSearchParams(window.location.search);
-    const urlFromParam = urlParams.get('cloud');
+    const spaceFromUrl = urlParams.get('space');
+    const secretFromUrl = urlParams.get('secret');
     
-    if(urlFromParam){
-      this.apiUrl = urlFromParam;
-      StorageModule.set('nzch_cloud_url', urlFromParam);
-    } else if(savedUrl){
-      this.apiUrl = savedUrl;
+    let spaceId = savedSpaceId;
+    let clientSecret = savedSecret;
+    
+    if(spaceFromUrl && secretFromUrl){
+      spaceId = spaceFromUrl;
+      clientSecret = secretFromUrl;
+      StorageModule.set('nzch_space_id', spaceId);
+      StorageModule.set('nzch_client_secret', clientSecret);
     }
     
-    if(!this.apiUrl) return false;
+    if(!spaceId || !clientSecret) return false;
     
-    try{
-      const res = await this.call('getConfig');
-      if(res.errCode === 0){
-        this.available = true;
-        if(res.data){
-          const cfg = res.data;
-          if(cfg.brand) StorageModule.saveBrand(cfg.brand);
-          if(cfg.clubs) StorageModule.saveClubs(cfg.clubs);
-          if(cfg.ai) StorageModule.saveAI(cfg.ai);
-          if(cfg.manual) StorageModule.saveManual(cfg.manual);
-          if(cfg.webhook) StorageModule.saveWebhook(cfg.webhook);
-          console.log('[Cloud] 云端配置已同步');
-        }
-        return true;
-      }
-    }catch(e){
-      console.warn('[Cloud] 连接失败', e);
-    }
-    this.available = false;
-    return false;
+    return await this.connect(spaceId, clientSecret);
   },
 
-  async call(action, data){
-    if(!this.apiUrl) throw new Error('未配置云端API地址');
-    const res = await fetch(this.apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, data })
-    });
-    return await res.json();
+  async connect(spaceId, clientSecret){
+    try{
+      if(typeof UniCloud === 'undefined'){
+        console.warn('[Cloud] uniCloud SDK 未加载');
+        return false;
+      }
+      this.uniCloud = new UniCloud({
+        spaceId: spaceId,
+        clientSecret: clientSecret,
+        endpoint: 'https://api.next.bspapp.com'
+      });
+      this.db = this.uniCloud.database();
+      this.spaceId = spaceId;
+      StorageModule.set('nzch_space_id', spaceId);
+      StorageModule.set('nzch_client_secret', clientSecret);
+      
+      // 测试连接并同步配置
+      const res = await this.db.collection('nzch_config').orderBy('_id', 'desc').limit(1).get();
+      this.available = true;
+      console.log('[Cloud] uniCloud 连接成功');
+      
+      // 同步配置
+      if(res.result && res.result.data && res.result.data.length > 0){
+        const cfg = res.result.data[0];
+        if(cfg.brand) StorageModule.saveBrand(cfg.brand);
+        if(cfg.clubs) StorageModule.saveClubs(cfg.clubs);
+        if(cfg.ai) StorageModule.saveAI(cfg.ai);
+        if(cfg.manual) StorageModule.saveManual(cfg.manual);
+        if(cfg.webhook) StorageModule.saveWebhook(cfg.webhook);
+        if(cfg.version) StorageModule.setVersion(cfg.version);
+        console.log('[Cloud] 云端配置已同步');
+      }
+      return true;
+    }catch(e){
+      console.warn('[Cloud] 连接失败', e);
+      this.available = false;
+      return false;
+    }
   },
 
   async createOrder(order){
@@ -331,25 +351,33 @@ const CloudModule = {
       StorageModule.saveOrders(orders);
       return { success: true, order };
     }
-    const res = await this.call('createOrder', order);
-    if(res.errCode === 0){
-      const orders = StorageModule.loadOrders() || [];
-      orders.push({ ...order, _id: res.data.id });
-      StorageModule.saveOrders(orders);
-      return { success: true, order: { ...order, _id: res.data.id } };
+    try{
+      const orderData = { ...order, createdAt: Date.now() };
+      const res = await this.db.collection('nzch_orders').add(orderData);
+      if(res.result && res.result.id){
+        const orders = StorageModule.loadOrders() || [];
+        orders.push({ ...orderData, _id: res.result.id });
+        StorageModule.saveOrders(orders);
+        return { success: true, order: { ...orderData, _id: res.result.id } };
+      }
+      return { success: false, error: '创建失败' };
+    }catch(e){
+      console.warn('[Cloud] 创建订单失败', e);
+      return { success: false, error: e.message };
     }
-    return { success: false, error: res.errMsg };
   },
 
   async getOrdersByPhone(phone){
     if(!this.available){
       return StorageModule.loadOrders().filter(o=>o.customerPhone===phone);
     }
-    const res = await this.call('getOrders', { phone });
-    if(res.errCode === 0){
-      return res.data.list;
+    try{
+      const res = await this.db.collection('nzch_orders').where({ customerPhone: phone }).orderBy('createdAt', 'desc').get();
+      return (res.result && res.result.data) ? res.result.data : [];
+    }catch(e){
+      console.warn('[Cloud] 获取订单失败', e);
+      return [];
     }
-    return [];
   }
 };
 
@@ -1084,7 +1112,7 @@ const BookingModule = {
       status:'pending',createdAt:new Date().toISOString()
     };
     
-    // 写入订单(优先通过后端)
+    // 写入订单(优先通过云端)
     let pushOk = false;
     if(ServerModule.available){
       const res = await ServerModule.createOrder(order);
@@ -1098,6 +1126,15 @@ const BookingModule = {
         const pushRes = await ServerModule.pushOrder(order);
         pushOk = pushRes.success;
       }catch(e){ console.warn('后端推送失败', e); }
+    }else if(CloudModule.available){
+      const res = await CloudModule.createOrder(order);
+      if(!res.success){
+        UI.toast('提交失败:'+(res.error||'请重试'),'error');
+        return;
+      }
+      if(res.order) Object.assign(order, res.order);
+      // 云端模式下前端推送
+      pushOk = await this.pushWebhook(order, brand);
     }else{
       const orders=StorageModule.loadOrders();
       orders.push(order);
@@ -1319,6 +1356,8 @@ const ManualModule = {
 async function initApp(){
   // 优先尝试从后端服务器拉取配置
   await ServerModule.init();
+  // 尝试连接uniCloud云端
+  await CloudModule.init();
 
   // 从URL参数导入推送配置(用于跨设备同步)
   // 支持 ?t=xxx (PushPlus短模式) 和 ?w=xxx (企业微信base64模式) 和 ?c=xxx (完整配置) 和 #push=xxx (旧模式兼容)
