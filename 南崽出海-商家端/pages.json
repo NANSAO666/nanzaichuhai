@@ -1,0 +1,13 @@
+{
+    "pages": [
+        {"path":"pages/admin/admin","style":{"navigationBarTitleText":"管理员后台","navigationBarBackgroundColor":"#004A7C","navigationBarTextStyle":"white"}},
+        {"path":"pages/admin-brand/admin-brand","style":{"navigationBarTitleText":"品牌配置","navigationBarBackgroundColor":"#004A7C","navigationBarTextStyle":"white"}},
+        {"path":"pages/admin-clubs/admin-clubs","style":{"navigationBarTitleText":"码头管理","navigationBarBackgroundColor":"#004A7C","navigationBarTextStyle":"white"}},
+        {"path":"pages/admin-ai/admin-ai","style":{"navigationBarTitleText":"AI配置","navigationBarBackgroundColor":"#004A7C","navigationBarTextStyle":"white"}},
+        {"path":"pages/admin-push/admin-push","style":{"navigationBarTitleText":"推送配置","navigationBarBackgroundColor":"#004A7C","navigationBarTextStyle":"white"}},
+        {"path":"pages/admin-orders/admin-orders","style":{"navigationBarTitleText":"订单管理","navigationBarBackgroundColor":"#004A7C","navigationBarTextStyle":"white"}},
+        {"path":"pages/admin-manual/admin-manual","style":{"navigationBarTitleText":"说明书","navigationBarBackgroundColor":"#004A7C","navigationBarTextStyle":"white"}},
+        {"path":"pages/admin-images/admin-images","style":{"navigationBarTitleText":"图片管理","navigationBarBackgroundColor":"#004A7C","navigationBarTextStyle":"white"}}
+    ],
+    "globalStyle": {"navigationBarTextStyle":"white","navigationBarTitleText":"南崽出海商家端","navigationBarBackgroundColor":"#004A7C","backgroundColor":"#F5F7FA"}
+}

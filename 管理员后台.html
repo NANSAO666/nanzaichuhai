@@ -455,25 +455,50 @@ const ServerModule = {
 
 /* ============================================================
    CloudModule uniCloud云端同步模块
-   通过uniCloud HTTP API (clientDB) 直接调用,无需SDK
+   支持云函数URL化方式调用数据库
 ============================================================ */
 const CloudModule = {
   available: false,
   spaceId: '',
   clientSecret: '',
   endpoint: 'https://api.next.bspapp.com',
+  functionUrl: '',
   configDocId: '',
 
   async init(){
-    const savedSpaceId = StorageModule.get('nzch_space_id', '');
-    const savedSecret = StorageModule.get('nzch_client_secret', '');
-    if(savedSpaceId && savedSecret){
-      return await this.connect(savedSpaceId, savedSecret);
+    const urlParams = new URLSearchParams(window.location.search);
+    const funcUrlFromUrl = urlParams.get('funcUrl');
+    const savedFunctionUrl = StorageModule.get('nzch_function_url', '');
+    
+    let functionUrl = savedFunctionUrl;
+    if(funcUrlFromUrl){
+      functionUrl = funcUrlFromUrl;
+      StorageModule.set('nzch_function_url', functionUrl);
     }
-    // 默认配置
-    const defaultSpaceId = 'mp-be8bb2ea-2253-4636-aef9-ad4968f829d4';
-    const defaultSecret = 'bfodIRJzAUJ/DJU5N1+XAg==';
-    return await this.connect(defaultSpaceId, defaultSecret);
+    
+    if(functionUrl){
+      return await this.connectByUrl(functionUrl);
+    }
+    
+    console.warn('[Cloud] 未配置云函数URL，请点击"配置云端"按钮配置');
+    return false;
+  },
+
+  async connectByUrl(functionUrl){
+    try{
+      this.functionUrl = functionUrl;
+      StorageModule.set('nzch_function_url', functionUrl);
+      const res = await this.query('nzch_config', {}, 1);
+      this.available = true;
+      console.log('[Cloud] 云函数连接成功');
+      await this.syncConfigFromCloud();
+      return true;
+    }catch(e){
+      console.warn('[Cloud] 云函数连接失败', e);
+      this.available = false;
+      this.functionUrl = '';
+      return false;
+    }
   },
 
   async connect(spaceId, clientSecret){
@@ -482,13 +507,9 @@ const CloudModule = {
       this.clientSecret = clientSecret;
       StorageModule.set('nzch_space_id', spaceId);
       StorageModule.set('nzch_client_secret', clientSecret);
-      
-      // 测试连接 - 查询配置表
       const res = await this.query('nzch_config', {}, 1);
       this.available = true;
       console.log('[Cloud] uniCloud 连接成功');
-      
-      // 同步配置
       await this.syncConfigFromCloud();
       return true;
     }catch(e){
@@ -498,8 +519,34 @@ const CloudModule = {
     }
   },
 
-  // 通用请求函数 - 使用uniCloud REST API
   async request(action, params){
+    if(this.functionUrl){
+      return await this.requestByFunction(action, params);
+    }
+    return await this.requestByApi(action, params);
+  },
+
+  async requestByFunction(action, params){
+    const body = {
+      action: action,
+      ...params
+    };
+    const res = await fetch(this.functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if(!res.ok){
+      throw new Error('HTTP ' + res.status);
+    }
+    const data = await res.json();
+    if(data.success === false){
+      throw new Error(data.error || '请求失败');
+    }
+    return data;
+  },
+
+  async requestByApi(action, params){
     const url = `${this.endpoint}/database`;
     const body = {
       action: action,
@@ -519,18 +566,15 @@ const CloudModule = {
     return data;
   },
 
-  // 查询
   async query(collection, where, limit, orderby){
     const params = {
       collection,
-      field: '*',
       limit: limit || 20,
       skip: 0
     };
     if(where && Object.keys(where).length > 0){
-      params.query = where;
+      params.where = where;
     }
-    if(orderby) params.orderby = orderby;
     const res = await this.request('select', params);
     return res;
   },
@@ -567,7 +611,7 @@ const CloudModule = {
   async syncConfigFromCloud(){
     if(!this.available) return false;
     try{
-      const res = await this.query('nzch_config', {}, 1, '_id desc');
+      const res = await this.query('nzch_config', {}, 1);
       if(res.data && res.data.length > 0){
         const cfg = res.data[0];
         this.configDocId = cfg._id;
@@ -678,6 +722,57 @@ const CloudModule = {
       console.warn('[Cloud] 更新订单失败', e);
       return { success: false, error: e.message };
     }
+  },
+
+  openConfig(){
+    const currentUrl = this.functionUrl || '';
+    UI.modal('云端连接配置', `
+      <div class="space-y-4">
+        <div class="bg-seagrad p-3 rounded-xl text-sm text-deepsea">
+          <p class="font-semibold mb-1">💡 推荐使用云函数URL化方式</p>
+          <p class="text-xs opacity-80">由于uniCloud的clientDB HTTP API不支持纯HTML直接调用，建议通过云函数URL化方式连接数据库。</p>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-gray-700 block mb-2">云函数HTTP地址</label>
+          <input type="text" id="cfgFuncUrl" class="input-soft text-sm" 
+            placeholder="https://xxx.bspapp.com/api 或 https://xxx.cloudbasefunction.cn/api"
+            value="${currentUrl}" />
+          <p class="text-xs text-gray-400 mt-1">在uniCloud控制台创建云函数并配置URL化路径后填入</p>
+        </div>
+        <div class="border-t pt-3">
+          <p class="text-sm font-medium text-gray-700 mb-2">配置步骤：</p>
+          <ol class="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+            <li>登录 uniCloud 控制台，进入你的服务空间</li>
+            <li>新建云函数（命名为 api 或其他）</li>
+            <li>将 cloud-function-api/index.js 的代码粘贴进去</li>
+            <li>在云函数详情中开启「URL化」，设置访问路径</li>
+            <li>将生成的HTTP地址填入上方输入框</li>
+          </ol>
+        </div>
+      </div>
+    `, `
+      <button onclick="UI.closeModal()" class="px-4 py-2 rounded-lg border text-gray-600 text-sm">取消</button>
+      <button onclick="CloudModule.saveConfig()" class="btn-primary px-4 py-2 rounded-lg text-sm">保存并连接</button>
+    `);
+  },
+
+  saveConfig(){
+    const url = document.getElementById('cfgFuncUrl').value.trim();
+    if(!url){
+      UI.toast('请输入云函数地址', 'warn');
+      return;
+    }
+    this.connectByUrl(url).then(ok => {
+      if(ok){
+        UI.toast('云端连接成功', 'success');
+        UI.closeModal();
+        if(typeof OrderModule !== 'undefined' && OrderModule.render){
+          OrderModule.render();
+        }
+      }else{
+        UI.toast('连接失败，请检查地址是否正确', 'error');
+      }
+    });
   }
 };
 
@@ -2369,8 +2464,9 @@ const OrderModule = {
           <h2 class="font-serif-display text-xl md:text-2xl font-bold text-deepsea">预约订单台账</h2>
           <p class="text-xs md:text-sm text-gray-500 mt-1">共 ${orders.length} 单 ${cloudStatus}</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <button onclick="OrderModule.refresh()" class="btn-primary px-3 py-2 rounded-lg text-xs font-medium">🔄 刷新订单</button>
+          <button onclick="CloudModule.openConfig()" class="px-3 py-2 rounded-lg text-xs border border-gray-300 text-gray-600 hover:bg-gray-50">⚙ 配置云端</button>
           <button onclick="CloudModule.init().then(ok=>{if(ok){OrderModule.render();UI.toast('云端连接成功','success')}else{UI.toast('云端连接失败','error')}})" class="btn-gold px-3 py-2 rounded-lg text-xs">${CloudModule.available?'☁ 已连接':'连接云端'}</button>
         </div>
       </div>

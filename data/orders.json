@@ -1,0 +1,24 @@
+[
+  {
+    "clubId": "nansha",
+    "clubName": "南沙游艇会",
+    "boatSize": "50英尺",
+    "bookingDate": "2026-07-03",
+    "timeSlot": "09:00-12:00",
+    "pax": 8,
+    "customerName": "张先生",
+    "customerPhone": "13800138000",
+    "remark": "测试订单",
+    "createdAt": "2026-07-02T23:38:24.466Z",
+    "orderId": "NZC20260702233824YQU3",
+    "status": "pending"
+  },
+  {
+    "customerName": "测试",
+    "customerPhone": "13800138000",
+    "clubName": "南沙游艇会",
+    "createdAt": "2026-07-10T09:56:22.105Z",
+    "orderId": "NZC20260710095622I4QV",
+    "status": "pending"
+  }
+]
